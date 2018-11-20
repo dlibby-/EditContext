@@ -30,7 +30,10 @@ After creating an EditContext object, the web application should initialize the 
 
 ## Text Flow
 
+### Basic
 ![text flow](textflow_basic.png)
+
+The typical flow of text input begins when the user presses a key on the keyboard. The OS sees the key press and and delivers a message to the browser's input thread. The browser's input thread will route this to the appropriate document thread. If an EditContext has focus, the keydown event will be fired on that EditContext. As part of handling the key down on the input thread, the IME (if in use) will also be fed the key. It may choose to interpret that key differently depending on the input language --- the IME will then inform the text services framework to update the shared buffer. The text service will then tell the browser about this update, which eventually gets routed to the EditContext via the ```textupdating``` event. The user then lifts their finger from the key - the OS again delivers a message to the browser's input thread, and following the previous flow, keyup will be dispatched on the EditContext.
 
 ## API Details
 
