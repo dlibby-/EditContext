@@ -26,7 +26,13 @@ The web application is free to communicate before, after or during a request fro
 * layout has changed
 * type of expected input has changed
 
-[Insert diagram]
+After creating an EditContext object, the web application should initialize the text and selection (unless the default of empty is desired) along with the layout bounds of the EditContext's representation in the HTML view by calling ```textChanged()```, ```selectionChanged()```, and ```layoutChanged()```, respectively.
+
+## Text Flow
+
+![text flow](textflow_basic.png)
+
+## API Details
 
 The ```textupdate``` event will be fired on the EditContext when user input has resulted in characters being applied to the editable region. The event signals the fact that the software keyboard updated the text (and as such that state is reflected in the shared buffer at the time the event is fired). This can be a single character update, in the case of typical typing scenarios, or multiple-character insertion based on the user changing composition candidates. Even though text updates are the results of the software keyboard modifying the buffer, the creator of the EditContext is ultimately responsible for keeping its underlying model up-to-date with the content that is being edited as well as telling the EditContext about such changes. These could get out of sync, for example, when updates to the editable content come in through other means (the backspace key is a canonical example --- no ```textupdate``` is fired in this case, and the consumer of the EditContext should detect the keydown event and remove characters as appropriate).
 
@@ -35,12 +41,15 @@ Updates to the shared buffer are done via the ```textChanged()``` method on the 
 The ```selectionupdate``` event is fired when the input method wants a specific region selected, generally in response to an operation like IME reconversion.
 ```selectionChanged()``` should be called whenever the selection has changed, e.g. from Shift+Arrow or some other combination of control keys.
 
-The ```textformatupdate``` event is fired when the input method desires a specific region to be styled in a certain fashion, limited to the style properties that correspond with the properties that are exposed on TextFormatUpdateEvent (e.g. backgroundColor, textDecoration, etc.). The consumer of the EditContext should update their view accordingly to provide the user with visual feedback as prescribed by the software keyboard.
+The ```layoutChanged()``` method must be called whenever the client coordinates of the view of the EditContext have changed. The preferred method of providing that update is through an IntersectionObserver, which will ensure up-to-date coordinates can be reported for each frame. For example, if content is added near the editable content, or the document is scrolled, the coordinates may change without the EditContext being involved. Using an IntersectionObserver will ensure such changes are reported to the text services framework as the editable content moves around on the screen.
+
+The ```textformatupdate``` event is fired when the input method desires a specific region to be styled in a certain fashion, limited to the style properties that correspond with the properties that are exposed on TextFormatUpdateEvent (e.g. backgroundColor, textDecoration, etc.). The consumer of the EditContext should update their view accordingly to provide the user with visual feedback as prescribed by the software keyboard. Note that this may have accessibility implications, as the IME may not be aware of the color scheme of the editable contents (i.e. may be requesting blue highlight on text that was already blue).
 
 ```compositionstart``` and ```compositioncompleted``` fire when IME composition begins and ends. It does not provide any other contextual information, as the ```textupdating``` events will let the application know the text that the user wished to insert.
 
 There can be multiple EditContext's per document, and they each have a notion of focused state. Because there is no implicit representation of the EditContext in the HTML view, focus must be managed by the web developer, most likely by forwarding focus calls from the DOM element that contains the editable view. ```focus``` and ```blur``` events are fired on the EditContext in reponse to changes in the focused state.
 
+The ```type``` property on the EditContext denotes what type of input the EditContext is associated with. This information is typically provided to the underlying system as a hint for which software keyboard to load. This defaults to 'text'.
 
 ## Example usage
 
@@ -177,12 +186,14 @@ interface SelectionUpdateEvent : EditEvent {
 
 interface TextFormatUpdateEvent : EditEvent {
     readonly attribute EditContextTextRange formatRange;
-    readonly attribute DOMString color;
-    readonly attribute DOMString backgroundColor;
-    readonly attribute DOMString underlineColor;
-    readonly attribute DOMString underlineType;
-    readonly attribute DOMString reason;
+    readonly attribute USVString color;
+    readonly attribute USVString backgroundColor;
+    readonly attribute USVString underlineColor;
+    readonly attribute USVString underlineType;
+    readonly attribute USVString reason;
 };
+
+enum EditContextInputType { "text, "tel", "email" };
 
 /// @event name="keydown", type="KeyboardEvent"
 /// @event name="keyup", type="KeyboardEvent"
@@ -199,8 +210,17 @@ interface EditContext : EventTarget {
     void selectionChanged(unsigned long start, unsigned long end);
     void layoutChanged(DOMRect controlBounds, DOMRect selectionBounds);
     void textChanged(unsigned long start, unsigned long end, USVString updateText);
-
+    
     readonly attribute USVString currentTextBuffer;
     readonly attribute EditContextTextRange currentSelection;
+
+    attribute EditContextInputType type;
 };
+
 ```
+
+## Open Issues
+
+How to deal with the object model for focus, which is currently expressed via an Element (e.g. document.activeElement). Additionally how do we define tab ordering? Could we associate the EditContext with an element and have it 'forward' events? 
+
+No mention of accessibility --- need integration so that screen readers also have context as to where the caret/selection is placed in the content.
