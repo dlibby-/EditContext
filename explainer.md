@@ -28,25 +28,24 @@ The web application is free to communicate before, after or during a request fro
 
 After creating an EditContext object, the web application should initialize the text and selection (unless the default of empty is desired) along with the layout bounds of the EditContext's representation in the HTML view by calling ```textChanged()```, ```selectionChanged()```, and ```layoutChanged()```, respectively.
 
-## Text Flow
+## Basic scenarios
 
 ![shared text](shared_text_basic.png)
 
-The typical flow of text input comes from the user pressing keys on the keyboard. These are delivered to the browser, which may opt into using the system's text services framework in order to integrate with the IMEs installed on the system. This will cause input to be forwarded through the active IME. The IME is then able to query the text services to read contextual information related to the underlying editable text in order to provide suggestions, and potentially modify which character(s) should be written to the shared buffer. These modifications are typically performed based on the current selection, which is also communicated through the text services framework. When the shared buffer is updated, the web application will be notified of this via the ```textupdate``` event.
+The typical flow of text input comes from the user pressing keys on the keyboard. These are delivered to the browser, which opted-in to using the system's text services framework in order to integrate with the IMEs installed on the system. This will cause input to be forwarded to the active IME. The IME is then able to query the text services to read contextual information related to the underlying editable text in order to provide suggestions, and potentially modify which character(s) should be written to the shared buffer. These modifications are typically performed based on the current selection, which is also communicated through the text services framework. When the shared buffer is updated, the web application will be notified of this via the ```textupdate``` event.
 
-Changes to the editable contents can also come from external events, such as collaboration scenarios. In this case, the web editing framework is responsible for writing to the shared buffer, via the ```textChanged()``` method.
+Changes to the editable contents can also come from external events, such as collaboration scenarios. In this case, the web editing framework may get some XHR completion that notifies it of some pending collaboartive change that another user has committed. The framework is then responsible for writing to the shared buffer, via the ```textChanged()``` method.
 
 ![external input](external_input.png)
-
 
 ## API Details
 
 The ```textupdate``` event will be fired on the EditContext when user input has resulted in characters being applied to the editable region. The event signals the fact that the software keyboard updated the text (and as such that state is reflected in the shared buffer at the time the event is fired). This can be a single character update, in the case of typical typing scenarios, or multiple-character insertion based on the user changing composition candidates. Even though text updates are the results of the software keyboard modifying the buffer, the creator of the EditContext is ultimately responsible for keeping its underlying model up-to-date with the content that is being edited as well as telling the EditContext about such changes. These could get out of sync, for example, when updates to the editable content come in through other means (the backspace key is a canonical example --- no ```textupdate``` is fired in this case, and the consumer of the EditContext should detect the keydown event and remove characters as appropriate).
 
-Updates to the shared buffer are done via the ```textChanged()``` method on the EditContext. ```textChanged()``` accepts a range (start and end absolute positions over the underlying buffer) and the characters to insert at that range. ```textChanged()``` should be called anytime the editable contents have been updated. However, in general this should be avoided during the firing of ```textupdate``` as it will result in a canceled composition.
+Updates to the shared buffer are done via the ```textChanged()``` method on the EditContext. ```textChanged()``` accepts a range (start and end offsets over the underlying buffer) and the characters to insert at that range. ```textChanged()``` should be called anytime the editable contents have been updated. However, in general this should be avoided during the firing of ```textupdate``` as it will result in a canceled composition.
 
-The ```selectionupdate``` event is fired when the input method wants a specific region selected, generally in response to an operation like IME reconversion.
-```selectionChanged()``` should be called whenever the selection has changed, e.g. from Shift+Arrow or some other combination of control keys.
+The ```selectionupdate``` event is fired when the IME wants a specific region selected, generally in response to an operation like IME reconversion.
+```selectionChanged()``` should be called whenever the selection has changed. This could be from a combination of control keys (e.g. Shift + Arrow) or mouse selection.
 
 The ```layoutChanged()``` method must be called whenever the client coordinates of the view of the EditContext have changed. The preferred method of providing that update is through an IntersectionObserver, which will ensure up-to-date coordinates can be reported for each frame. For example, if content is added near the editable content, or the document is scrolled, the coordinates may change without the EditContext being involved. Using an IntersectionObserver will ensure such changes are reported to the text services framework as the editable content moves around on the screen.
 
@@ -60,6 +59,7 @@ The ```type``` property on the EditContext denotes what type of input the EditCo
 
 ## Example usage
 
+Basic setup:
 ```javascript
 
 // User defined class that contains the underlying model for the editable content
@@ -226,9 +226,12 @@ interface EditContext : EventTarget {
 
 ```
 
-## Implementation details
+## Implementation notes
 
-In a browser where the document thread is decoupled from the input thread, there is some synchronization that needs to take place so that the web developer can provide a consistent and reliable editing experience. 
+In a browser where the document thread is separate from the input thread, there is some synchronization that needs to take place so that the web developer can provide a consistent and reliable editing experience to the user. Because the threads are decoupled, there must be another copy of the shared buffer to avoid synchronous communication between the two threads. The copies of the shared buffer are then managed by a component that lives on the input thread, and a component that lives in the web platform component. The copies are synchronized by treating the buffer of the document thread as the source of truth - updates from the input thread are converted into asynchronous notifications with ACKs, where the update is not committed until it has been confirmed as received by the document thread.
+
+!
+
 The OS sees the key press and and delivers a message to the browser's input thread. The browser's input thread will route this to the appropriate document thread. If an EditContext has focus, the ```keydown``` event will be fired on that EditContext. As part of handling the key down on the input thread, the IME (if in use) will also be fed the key. It may choose to interpret that key differently depending on the input language --- the IME will then inform the text services framework to update the shared buffer. The text service will then tell the browser about this update, which eventually gets routed to the EditContext via the ```textupdate``` event. The user then lifts their finger from the key - the OS again delivers a message to the browser's input thread, and following the previous flow, the ```keyup``` event will be dispatched on the EditContext.
 
 Due to the asynchronous nature of these updates, it is possible for the ```textupdate```
@@ -236,4 +239,6 @@ Due to the asynchronous nature of these updates, it is possible for the ```textu
 
 How to deal with the object model for focus, which is currently expressed via an Element (e.g. document.activeElement). Additionally how do we define tab ordering? Could we associate the EditContext with an element and have it 'forward' events? 
 
-No mention of accessibility --- need integration so that screen readers also have context as to where the caret/selection is placed in the content.
+No mention of accessibility --- need integration so that screen readers also have context as to where the caret/selection is placed as well as the surrounding contents.
+
+Is IntersectionObserver the right recommendation for updating layout bounds, or should we consider adding another phase in the HTML rendering steps?
