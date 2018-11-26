@@ -30,10 +30,14 @@ After creating an EditContext object, the web application should initialize the 
 
 ## Text Flow
 
-### Basic
-![text flow](textflow_basic.png)
+![shared text](shared_text_basic.png)
 
-The typical flow of text input begins when the user presses a key on the keyboard. The OS sees the key press and and delivers a message to the browser's input thread. The browser's input thread will route this to the appropriate document thread. If an EditContext has focus, the keydown event will be fired on that EditContext. As part of handling the key down on the input thread, the IME (if in use) will also be fed the key. It may choose to interpret that key differently depending on the input language --- the IME will then inform the text services framework to update the shared buffer. The text service will then tell the browser about this update, which eventually gets routed to the EditContext via the ```textupdating``` event. The user then lifts their finger from the key - the OS again delivers a message to the browser's input thread, and following the previous flow, keyup will be dispatched on the EditContext.
+The typical flow of text input comes from the user pressing keys on the keyboard. These are delivered to the browser, which may opt into using the system's text services framework in order to integrate with the IMEs installed on the system. This will cause input to be forwarded through the active IME. The IME is then able to query the text services to read contextual information related to the underlying editable text in order to provide suggestions, and potentially modify which character(s) should be written to the shared buffer. These modifications are typically performed based on the current selection, which is also communicated through the text services framework. When the shared buffer is updated, the web application will be notified of this via the ```textupdate``` event.
+
+Changes to the editable contents can also come from external events, such as collaboration scenarios. In this case, the web editing framework is responsible for writing to the shared buffer, via the ```textChanged()``` method.
+
+![external input](external_input.png)
+
 
 ## API Details
 
@@ -48,7 +52,7 @@ The ```layoutChanged()``` method must be called whenever the client coordinates 
 
 The ```textformatupdate``` event is fired when the input method desires a specific region to be styled in a certain fashion, limited to the style properties that correspond with the properties that are exposed on TextFormatUpdateEvent (e.g. backgroundColor, textDecoration, etc.). The consumer of the EditContext should update their view accordingly to provide the user with visual feedback as prescribed by the software keyboard. Note that this may have accessibility implications, as the IME may not be aware of the color scheme of the editable contents (i.e. may be requesting blue highlight on text that was already blue).
 
-```compositionstart``` and ```compositioncompleted``` fire when IME composition begins and ends. It does not provide any other contextual information, as the ```textupdating``` events will let the application know the text that the user wished to insert.
+```compositionstart``` and ```compositioncompleted``` fire when IME composition begins and ends. It does not provide any other contextual information, as the ```textupdate``` events will let the application know the text that the user wished to insert.
 
 There can be multiple EditContext's per document, and they each have a notion of focused state. Because there is no implicit representation of the EditContext in the HTML view, focus must be managed by the web developer, most likely by forwarding focus calls from the DOM element that contains the editable view. ```focus``` and ```blur``` events are fired on the EditContext in reponse to changes in the focused state.
 
@@ -146,7 +150,7 @@ editContext.addEventListener("keyup", e => {
     }
 });
 
-editContext.addEventListener("textupdating", (e => {
+editContext.addEventListener("textupdate", (e => {
     model.updateText(e.text, e.updateRange);
 
     // Do not call textChanged on editContext, as we're accepting
@@ -222,6 +226,12 @@ interface EditContext : EventTarget {
 
 ```
 
+## Implementation details
+
+In a browser where the document thread is decoupled from the input thread, there is some synchronization that needs to take place so that the web developer can provide a consistent and reliable editing experience. 
+The OS sees the key press and and delivers a message to the browser's input thread. The browser's input thread will route this to the appropriate document thread. If an EditContext has focus, the ```keydown``` event will be fired on that EditContext. As part of handling the key down on the input thread, the IME (if in use) will also be fed the key. It may choose to interpret that key differently depending on the input language --- the IME will then inform the text services framework to update the shared buffer. The text service will then tell the browser about this update, which eventually gets routed to the EditContext via the ```textupdate``` event. The user then lifts their finger from the key - the OS again delivers a message to the browser's input thread, and following the previous flow, the ```keyup``` event will be dispatched on the EditContext.
+
+Due to the asynchronous nature of these updates, it is possible for the ```textupdate```
 ## Open Issues
 
 How to deal with the object model for focus, which is currently expressed via an Element (e.g. document.activeElement). Additionally how do we define tab ordering? Could we associate the EditContext with an element and have it 'forward' events? 
