@@ -8,7 +8,7 @@ The EditContext API provides a way for web developers to create editing experien
 
 The EditContext API is an abstraction over a shared text input buffer that is a plain text model of the content being edited. It also has the notion of selection, expressed as offsets into the buffer (collapsed selection represents an insertion point or caret). The EditContext has a notion of layout bounds of the view of the editable region, as well as the selection. These values are provided by the web developer so that touch keyboards and IME's can be appropriately positioned. Having a shared buffer and selection allows for software keyboards to have context regarding the contents being edited. This enables features such as autocorrection suggestions, composition reconversion, and simplified handling of composition candidate selection.
 
-Because the buffer and selection are stateful, updating the contents of the buffer is a cooperative process between the characters coming from the user and changes to the content that are driven by other events. Cooperation takes place through a series of events dispatched on the EditContext to the web application --- these events are requests from the text services framework for updates to the editable text or the web application's view of that text. The web application is also responsible for communicating state changes to the text input services, by using methods on the EditContext.
+Because the buffer and selection are stateful, updating the contents of the buffer is a cooperative process between the characters coming from the user and changes to the content that are driven by other events. Cooperation takes place through a series of events dispatched on the EditContext to the web application &mdash; these events are requests from the text services framework for updates to the editable text or the web application's view of that text. The web application is also responsible for communicating state changes to the text input services, by using methods on the EditContext.
 
 The text services framework reads the following state:
 * contents
@@ -40,7 +40,7 @@ Changes to the editable contents can also come from external events, such as col
 
 ## API Details
 
-The ```textupdate``` event will be fired on the EditContext when user input has resulted in characters being applied to the editable region. The event signals the fact that the software keyboard updated the text (and as such that state is reflected in the shared buffer at the time the event is fired). This can be a single character update, in the case of typical typing scenarios, or multiple-character insertion based on the user changing composition candidates. Even though text updates are the results of the software keyboard modifying the buffer, the creator of the EditContext is ultimately responsible for keeping its underlying model up-to-date with the content that is being edited as well as telling the EditContext about such changes. These could get out of sync, for example, when updates to the editable content come in through other means (the backspace key is a canonical example --- no ```textupdate``` is fired in this case, and the consumer of the EditContext should detect the keydown event and remove characters as appropriate).
+The ```textupdate``` event will be fired on the EditContext when user input has resulted in characters being applied to the editable region. The event signals the fact that the software keyboard updated the text (and as such that state is reflected in the shared buffer at the time the event is fired). This can be a single character update, in the case of typical typing scenarios, or multiple-character insertion based on the user changing composition candidates. Even though text updates are the results of the software keyboard modifying the buffer, the creator of the EditContext is ultimately responsible for keeping its underlying model up-to-date with the content that is being edited as well as telling the EditContext about such changes. These could get out of sync, for example, when updates to the editable content come in through other means (the backspace key is a canonical example &mdash; no ```textupdate``` is fired in this case, and the consumer of the EditContext should detect the keydown event and remove characters as appropriate).
 
 Updates to the shared buffer are done via the ```textChanged()``` method on the EditContext. ```textChanged()``` accepts a range (start and end offsets over the underlying buffer) and the characters to insert at that range. ```textChanged()``` should be called anytime the editable contents have been updated. However, in general this should be avoided during the firing of ```textupdate``` as it will result in a canceled composition.
 
@@ -59,77 +59,21 @@ The ```type``` property on the EditContext denotes what type of input the EditCo
 
 ## Example usage
 
-Basic setup:
+
+Creating an EditContext and have it be focused
 ```javascript
-
-// User defined class that contains the underlying model for the editable content
-class EditModel {
-    constructor(editContext) {
-        // This specific model uses the underlying buffer directly so doesn't
-        // store model directly.
-        this.editContext = editContext;
-    }
-
-    updateText(text, updateRange, newSelection) {
-        // No action needed, since we're directly using the underlying buffer
-        // as our model
-    }
-
-    updateSelection(...) {
-        // Compute new selection, based on shift/ctrl state
-        let newSelection = computeSelection(this.editContext.currentSelection, ...);
-        this.editContext.selectionChanged(newSelection.start, newSelection.end);
-    }
-
-    insertNewline() {
-        this.editContext.textChanged(this.selection.start, this.selection.end, "\\n");
-    }
-
-    deleteCharacters(direction) {
-        if (this.editContext.currentSelection.start === this.editContext.currentSelection.end) {
-            // adjust start/end based on direction and whether we're at the beginning or end
-        } else {
-            this.editContext.textChanged(this.selection.start, this.selection.end, "");
-        }
-    }
-}
-
-// User defined class that can compute an HTML view, based on the text model
-class EditableView {
-    constructor(editContext, editRegionElement) {
-        this.editContext = editContext;
-        this.editRegionElement = editRegionElement;
-    }
-
-    queueUpdate() {
-        if (!this.updateQueued) {
-            requestAnimationFrame(this.renderView.bind(this));
-            this.updateQueued = true;
-        }
-    }
-
-    renderView() {
-        this.editRegionElement.innerHTML = convertTextToHTML(
-            this.editContext.currentTextBuffer, this.editContext.currentSelection);
-        this.updateQueued = false;
-    }
-}
-
-
 let editContext = new EditContext();
-let model = new EditModel(editContext);
-let view = new EditableView(editContext, document.querySelector("#editregion");
+editContext.focus();
+```
 
+Assuming ```model``` represents the document model for the editable content, and ```view``` represents and object that produces an HTML view of the document.
+Register for textupdate and keyboard related events:
+```javascript
 editContext.addEventListener("keydown", e => {
     // Handle control keys that don't result in characters being inserted
     switch (e.key) {
-        case "ArrowLeft":
         case "Home":
             model.updateSelection(...);
-            view.queueUpdate();
-            break;
-        case "Enter":
-            model.insertNewline();
             view.queueUpdate();
             break;
         case "Backspace":
@@ -158,72 +102,64 @@ editContext.addEventListener("textupdate", (e => {
 
     view.queueUpdate();
 });
-
-editContext.addEventListener("focus", (e => {
-    // Update view to reflect the focus state
-});
-
-editContext.addEventListener("blur", (e => {
-    // Update view to reflect the focus state
-});
-
-editContext.focus();
 ```
 
-## WebIDL
+Example of a user-defined EditModel class that contains the underlying model for the editable content
+```javascript
+// User defined class 
+class EditModel {
+    constructor(editContext) {
+        // This specific model uses the underlying buffer directly so doesn't
+        // store model directly.
+        this.editContext = editContext;
+    }
 
-```webidl
-interface EditContextTextRange {
-    readonly attribute unsigned long start;
-    readonly attribute unsigned long end;
-};
+    updateText(text, updateRange, newSelection) {
+        // No action needed, since we're directly using the shared buffer
+        // as our model
+    }
 
-interface EditEvent : Event {
-};
+    updateSelection(...) {
+        // Compute new selection, based on shift/ctrl state
+        let newSelection = computeSelection(this.editContext.currentSelection, ...);
+        this.editContext.selectionChanged(newSelection.start, newSelection.end);
+    }
 
-interface TextUpdate : EditEvent {
-    readonly attribute EditContextTextRange updateRange;
-    readonly attribute USVString updateText;
-    readonly attribute EditContextTextRange newSelection;
-};
+    insertNewline() {
+        this.editContext.textChanged(this.selection.start, this.selection.end, "\\n");
+    }
 
-interface SelectionUpdateEvent : EditEvent {
-    readonly attribute EditContextTextRange updatedSelectionRange;
-};
+    deleteCharacters(direction) {
+        if (this.editContext.currentSelection.start === this.editContext.currentSelection.end) {
+            // adjust start/end based on direction and whether we're at the beginning or end
+        } else {
+            this.editContext.textChanged(this.selection.start, this.selection.end, "");
+        }
+    }
+}
+```
 
-interface TextFormatUpdateEvent : EditEvent {
-    readonly attribute EditContextTextRange formatRange;
-    readonly attribute USVString color;
-    readonly attribute USVString backgroundColor;
-    readonly attribute USVString underlineColor;
-    readonly attribute USVString underlineType;
-    readonly attribute USVString reason;
-};
+Example of a user defined class that can compute an HTML view, based on the text model
+```javascript
+class EditableView {
+    constructor(editContext, editRegionElement) {
+        this.editContext = editContext;
+        this.editRegionElement = editRegionElement;
+    }
 
-enum EditContextInputType { "text, "tel", "email" };
+    queueUpdate() {
+        if (!this.updateQueued) {
+            requestAnimationFrame(this.renderView.bind(this));
+            this.updateQueued = true;
+        }
+    }
 
-/// @event name="keydown", type="KeyboardEvent"
-/// @event name="keyup", type="KeyboardEvent"
-/// @event name="textupdate", type="TextUpdateEvent"
-/// @event name="selectionupdate", type="SelectionUpdateEvent"
-/// @event name="textformatupdate", type="TextFormatUpdateEvent"
-/// @event name="focus", type="FocusEvent"
-/// @event name="blur", type="FocusEvent"
-/// @event name="compositionstart", type="CompositionEvent"
-/// @event name="compositioncompleted", type="CompositionEvent"
-interface EditContext : EventTarget {
-    void focus();
-    void blur();
-    void selectionChanged(unsigned long start, unsigned long end);
-    void layoutChanged(DOMRect controlBounds, DOMRect selectionBounds);
-    void textChanged(unsigned long start, unsigned long end, USVString updateText);
-    
-    readonly attribute USVString currentTextBuffer;
-    readonly attribute EditContextTextRange currentSelection;
-
-    attribute EditContextInputType type;
-};
-
+    renderView() {
+        this.editRegionElement.innerHTML = convertTextToHTML(
+            this.editContext.currentTextBuffer, this.editContext.currentSelection);
+        this.updateQueued = false;
+    }
+}
 ```
 
 ## Implementation notes
@@ -238,15 +174,15 @@ As in the previous section the basic flow of input in this model could look like
 
 It is possible for conflicts to occur between the input thread and script thread updating the shared buffer. These can be resolved in such a way that the users input is not dropped and is consistently applied in the expected manner.
 
-Let's say there is an EditContext that starts with a shared buffer of ```"abc|"``` with the selection/caret being at the end of the buffer. The user types ```d``` and approximately the same time, there is a collaborative update to the document that prepends ```x``` --- these are delivered independently to each thread.
-(1) The input thread sees the insertion of ```d``` at position 3, the shared buffer is updated to ```"abcd|```, and the input thread component keeps a record of this pending action. It then sends a textupdate notification to the document thread. 
-(2) Meanwhile, prior to receiving that notification, the document thread processes the prepending of ```x``` and sends a notification to the input thread of this text change, keeping track of this pending operation. 
-(3) The input thread receives the text change notification prior to the ACK for its pending textupdate. To resolve this conflict, it undoes the pending insertion of ```d``` and applies the text change. It is then determined that the previous insertion location of ```d``` was not modified* by the text change, so it replays the insertion of ```d```, but at position 4 instead and keeps this as a pending update. This leaves the shared buffer as ```"xabcd|"```. The ACK of the text change is sent to the document thread.
-(4) The document thread then yields and receives the text update of ```d``` at position 3. It determines that it has a pending operation outstanding, so runs through the same algorithm as the input thread --- the ```x``` is already prepended but the text update is determined to not have been modified by the pending operations. The text update is then adjusted and applied as ```d``` at position 4. The text update is then ACK'd back to the input thread.
-(5) The ACK of the text change is received on the document thread and the pending operation is removed (committed)
-(6) The ACK of the text update is received on the inpu thread and its pending operation is also removed (committed)
+Let's say there is an EditContext that starts with a shared buffer of ```"abc|"``` with the selection/caret being at the end of the buffer. The user types ```d``` and approximately the same time, there is a collaborative update to the document that prepends ```x``` &mdash; these are delivered independently to each thread.
+1. The input thread sees the insertion of ```d``` at position 3, the shared buffer is updated to ```"abcd|```, and the input thread component keeps a record of this pending action. It then sends a textupdate notification to the document thread. 
+2. Meanwhile, prior to receiving that notification, the document thread processes the prepending of ```x``` and sends a notification to the input thread of this text change, keeping track of this pending operation. 
+3. The input thread receives the text change notification prior to the ACK for its pending textupdate. To resolve this conflict, it undoes the pending insertion of ```d``` and applies the text change. It is then determined that the previous insertion location of ```d``` was not modified* by the text change, so it replays the insertion of ```d```, but at position 4 instead and keeps this as a pending update. This leaves the shared buffer as ```"xabcd|"```. The ACK of the text change is sent to the document thread.
+4. The document thread then yields and receives the text update of ```d``` at position 3. It determines that it has a pending operation outstanding, so runs through the same algorithm as the input thread &mdash; the ```x``` is already prepended but the text update is determined to not have been modified by the pending operations. The text update is then adjusted and applied as ```d``` at position 4. The text update is then ACK'd back to the input thread.
+5. The ACK of the text change is received on the document thread and the pending operation is removed (committed)
+6. The ACK of the text update is received on the input thread and its pending operation is also removed (committed)
 
-* An operation is only affected by a change if the range on which it was originally intended to apply to has been modified.
+\* An operation is only affected by a change if the range on which it was originally intended to apply to has been modified.
 
 ![thread conflict](thread_conflict.png)
 
