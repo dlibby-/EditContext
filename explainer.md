@@ -44,7 +44,7 @@ The ```textupdate``` event will be fired on the EditContext when user input has 
 
 Updates to the shared buffer that are not initiated via text services raising a ```textupdate``` event are performed by calling the ```textChanged()``` method on the EditContext. ```textChanged()``` accepts a range (start and end offsets over the underlying buffer) and the characters to insert at that range. ```textChanged()``` should be called anytime the editable contents have been updated. However, in general this should be avoided during the firing of ```textupdate``` as it will result in a canceled composition.
 
-The ```selectionupdate``` event is fired when the IME wants a specific region selected, generally in response to an operation like IME reconversion.
+The ```selectionupdate``` event may be fired when the IME wants a specific region selected, generally in response to an operation like IME reconversion.
 ```selectionChanged()``` should be called whenever the selection has changed. This could be from a combination of control keys (e.g. Shift + Arrow) or mouse selection.
 
 The ```layoutChanged()``` method must be called whenever the client coordinates of the view of the EditContext have changed. The arguments to this method describe a bounding box for both the editable region and also the current selection. 
@@ -55,14 +55,14 @@ The ```textformatupdate``` event is fired when the input method desires a specif
 
 There can be multiple EditContext's per document, and they each have a notion of focused state. Because there is no implicit representation of the EditContext in the HTML view, focus must be managed by the web developer, most likely by forwarding focus calls from the DOM element that contains the editable view. ```focus``` and ```blur``` events are fired on the EditContext in reponse to changes in the focused state.
 
-The ```type``` property on the EditContext denotes what type of input the EditContext is associated with. This information is typically provided to the underlying system as a hint for which software keyboard to load. This defaults to 'text'.
+The ```type``` property on the EditContext (also can be passed in a dictionary to the constructor) denotes what type of input the EditContext is associated with. This information is typically provided to the underlying system as a hint for which software keyboard to load (e.g. keyboard for phone numbers may be a numpad instead of the default keyboard). This defaults to 'text'.
 
 ## Example usage
 
 
 Creating an EditContext and have it be focused
 ```javascript
-let editContext = new EditContext();
+let editContext = new EditContext({type: "text"});
 editContext.focus();
 ```
 
@@ -157,6 +157,9 @@ class EditableView {
     renderView() {
         this.editRegionElement.innerHTML = convertTextToHTML(
             this.editContext.currentTextBuffer, this.editContext.currentSelection);
+
+        this.editContext.layoutChanged(this.computeBoundingBox(), this.computeSelectionBoundingBox());
+
         this.updateQueued = false;
     }
 }
