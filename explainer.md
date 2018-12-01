@@ -12,16 +12,34 @@ Because the buffer and selection are stateful, updating the contents of the buff
 
 The EditContext must be focused in order to receive updates from the systems text services. This does not change or modify the existing focused/active element, but instead instructs the user agent that a given EditContext is active and thus text editing related updates should be delivered via events on the EditContext.
 
+While an EditContext is active, the text services framework reads the following state:
+* contents
+* selection location
+* location on the screen
+
+The text services framework can also request that the buffer or view of the application be modified by requesting that:
+* the text of the buffer be updated
+* the selection of the buffer be relocated
+* the text of the buffer be highlighted over a particular range
+
+The web application is free to communicate before, after or during a request from the text services framework that its:
+* buffer has changed
+* selection has changed
+* layout has changed
+* type of expected input has changed
+
 ### Code example
 
-Creating an EditContext and have it start receiving events when the container gets focus
+Creating an EditContext and have it start receiving events when its associated container gets focus
 ```javascript
 let editContainer = document.querySelector("#editContainer");
 let editContext = new EditContext({type: "text"});
 editContainer.addEventListener("focus", () => editContext.focus());
 ```
 
-Assuming ```model``` represents the document model for the editable content, and ```view``` represents and object that produces an HTML view of the document.
+After creating an EditContext object, the web application should initialize the text and selection (unless the default of empty is desired) along with the layout bounds of the EditContext's representation in the HTML view by calling ```textChanged()```, ```selectionChanged()```, and ```layoutChanged()```, respectively.
+
+Assuming ```model``` represents the document model for the editable content, and ```view``` represents and object that produces an HTML view of the document (see [Code Appendix](#code-appendix) for more details).
 Register for textupdate and keyboard related events (note that keydown/keyup are still delivered to the edit container that still has focus):
 ```javascript
 editContainer.addEventListener("keydown", e => {
@@ -59,24 +77,6 @@ editContext.addEventListener("textupdate", (e => {
 });
 ```
 
-While an EditContext is active, the text services framework reads the following state:
-* contents
-* selection location
-* location on the screen
-
-The text services framework can also request that the buffer or view of the application be modified by requesting that:
-* the text of the buffer be updated
-* the selection of the buffer be relocated
-* the text of the buffer be highlighted over a particular range
-
-The web application is free to communicate before, after or during a request from the text services framework that its:
-* buffer has changed
-* selection has changed
-* layout has changed
-* type of expected input has changed
-
-After creating an EditContext object, the web application should initialize the text and selection (unless the default of empty is desired) along with the layout bounds of the EditContext's representation in the HTML view by calling ```textChanged()```, ```selectionChanged()```, and ```layoutChanged()```, respectively.
-
 ## Basic scenarios
 
 ![shared text](shared_text_basic.png)
@@ -95,18 +95,18 @@ Note that keypress is not delivered, as the active EditContext instead receives 
 
 Now consider the scenario where an IME is active, the user types in two characters, then commits to the first IME candidate by hitting 'Space'.
 
-|  Event                | EventTarget        |  Key being pressed
+|  Event                | EventTarget        |  Related key in sequence
 | -------------         | -----------------  | -------------------
 |  keydown              | focused element    |  Key 1
-|  compositionstart     | active EditContext |
-|  textupdate           | active EditContext |
-|  keyup                | focused element    |
+|  compositionstart     | active EditContext |  ...
+|  textupdate           | active EditContext |  ...
+|  keyup                | focused element    |  ...
 |  keydown              | focused element    |  Key 2
-|  textupdate           | active EditContext |
-|  keyup                | focused element    |
+|  textupdate           | active EditContext |  ...
+|  keyup                | focused element    |  ...
 |  keydown              | focused element    |  Space
 |  textupdate           | active EditContext |  (committed IME characters available in event.updateText)
-|  keyup                | focused element    |
+|  keyup                | focused element    |  ...
 |  compositioncomplete  | active EditContext |
 
 Note that the composition events are also not fired on the focused element as the composition is operating on the shared buffer that is represented by the EditContext.
@@ -136,8 +136,34 @@ There can be multiple EditContext's per document, and they each have a notion of
 
 The ```type``` property on the EditContext (also can be passed in a dictionary to the constructor) denotes what type of input the EditContext is associated with. This information is typically provided to the underlying system as a hint for which software keyboard to load (e.g. keyboard for phone numbers may be a numpad instead of the default keyboard). This defaults to 'text'.
 
-## Example usage
 
+## Implementation notes
+
+In a browser where the document thread is separate from the input thread, there is some synchronization that needs to take place so that the web developer can provide a consistent and reliable editing experience to the user. Because the threads are decoupled, there must be another copy of the shared buffer to avoid synchronous communication between the two threads. The copies of the shared buffer are then managed by a component that lives on the input thread, and a component that lives in the web platform component. The copies can then be synchronized by converting updates to asynchronous notifications with ACKs, where the updates are not committed until it has been confirmed as received by the other thread.
+
+As in the previous section the basic flow of input in this model could look like this:
+![threaded buffer flow](thread_basic.png)
+![threaded buffer flow external](thread_external.png)
+
+### Resolving conflicts
+
+It is possible for conflicts to occur between the input thread and script thread updating the shared buffer. These can be resolved in such a way that the users input is not dropped and is consistently applied in the expected manner.
+
+Let's say there is an EditContext that starts with a shared buffer of ```"abc|"``` with the selection/caret being at the end of the buffer. The user types ```d``` and approximately the same time, there is a collaborative update to the document that prepends ```x``` &mdash; these are delivered independently to each thread.
+1. The input thread sees the insertion of ```d``` at position 3, the shared buffer is updated to ```"abcd|```, and the input thread component keeps a record of this pending action. It then sends a textupdate notification to the document thread. 
+2. Meanwhile, prior to receiving that notification, the document thread processes the prepending of ```x``` and sends a notification to the input thread of this text change, keeping track of this pending operation. 
+3. The input thread receives the text change notification prior to the ACK for its pending textupdate. To resolve this conflict, it undoes the pending insertion of ```d``` and applies the text change. It is then determined that the previous insertion location of ```d``` was not modified* by the text change, so it replays the insertion of ```d```, but at position 4 instead and keeps this as a pending update. This leaves the shared buffer as ```"xabcd|"```. The ACK of the text change is sent to the document thread.
+4. The document thread then yields and receives the text update of ```d``` at position 3. It determines that it has a pending operation outstanding, so runs through the same algorithm as the input thread &mdash; the ```x``` is already prepended but the text update is determined to not have been modified by the pending operations. The text update is then adjusted and applied as ```d``` at position 4. The text update is then ACK'd back to the input thread.
+5. The ACK of the text change is received on the document thread and the pending operation is removed (committed)
+6. The ACK of the text update is received on the input thread and its pending operation is also removed (committed)
+
+\* An operation is only affected by a change if the range on which it was originally intended to apply to has been modified.
+
+![thread conflict](thread_conflict.png)
+
+The layout position of the EditContext is also reported to the input thread component, which caches the values and lets the text services know that the position has changed. In turn, it uses the cached values to respond to any read requests from the text services.
+
+## Code Appendix
 
 Example of a user-defined EditModel class that contains the underlying model for the editable content
 ```javascript
@@ -201,33 +227,6 @@ class EditableView {
     }
 }
 ```
-
-## Implementation notes
-
-In a browser where the document thread is separate from the input thread, there is some synchronization that needs to take place so that the web developer can provide a consistent and reliable editing experience to the user. Because the threads are decoupled, there must be another copy of the shared buffer to avoid synchronous communication between the two threads. The copies of the shared buffer are then managed by a component that lives on the input thread, and a component that lives in the web platform component. The copies can then be synchronized by converting updates to asynchronous notifications with ACKs, where the updates are not committed until it has been confirmed as received by the other thread.
-
-As in the previous section the basic flow of input in this model could look like this:
-![threaded buffer flow](thread_basic.png)
-![threaded buffer flow external](thread_external.png)
-
-### Resolving conflicts
-
-It is possible for conflicts to occur between the input thread and script thread updating the shared buffer. These can be resolved in such a way that the users input is not dropped and is consistently applied in the expected manner.
-
-Let's say there is an EditContext that starts with a shared buffer of ```"abc|"``` with the selection/caret being at the end of the buffer. The user types ```d``` and approximately the same time, there is a collaborative update to the document that prepends ```x``` &mdash; these are delivered independently to each thread.
-1. The input thread sees the insertion of ```d``` at position 3, the shared buffer is updated to ```"abcd|```, and the input thread component keeps a record of this pending action. It then sends a textupdate notification to the document thread. 
-2. Meanwhile, prior to receiving that notification, the document thread processes the prepending of ```x``` and sends a notification to the input thread of this text change, keeping track of this pending operation. 
-3. The input thread receives the text change notification prior to the ACK for its pending textupdate. To resolve this conflict, it undoes the pending insertion of ```d``` and applies the text change. It is then determined that the previous insertion location of ```d``` was not modified* by the text change, so it replays the insertion of ```d```, but at position 4 instead and keeps this as a pending update. This leaves the shared buffer as ```"xabcd|"```. The ACK of the text change is sent to the document thread.
-4. The document thread then yields and receives the text update of ```d``` at position 3. It determines that it has a pending operation outstanding, so runs through the same algorithm as the input thread &mdash; the ```x``` is already prepended but the text update is determined to not have been modified by the pending operations. The text update is then adjusted and applied as ```d``` at position 4. The text update is then ACK'd back to the input thread.
-5. The ACK of the text change is received on the document thread and the pending operation is removed (committed)
-6. The ACK of the text update is received on the input thread and its pending operation is also removed (committed)
-
-\* An operation is only affected by a change if the range on which it was originally intended to apply to has been modified.
-
-![thread conflict](thread_conflict.png)
-
-The layout position of the EditContext is also reported to the input thread component, which caches the values and lets the text services know that the position has changed. In turn, it uses the cached values to respond to any read requests from the text services.
-
 ## Open Issues
 
 How to deal EditContext focus when the focused element itself is editable? In the current proposed model, the focused element doesn't receive things like composition events &mdash; should an editable element receive these? Does text actually get inserted? Can we avoid this corner case by not allowing an EditContext to get focus() when the activeElement is editable?
