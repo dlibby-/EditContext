@@ -12,6 +12,8 @@ Because the buffer and selection are stateful, updating the contents of the buff
 
 The EditContext must be focused in order to receive updates from the systems text services. This does not change or modify the existing focused/active element, but instead instructs the user agent that a given EditContext is active and thus text editing related updates should be delivered via events on the EditContext.
 
+### Code example
+
 Creating an EditContext and have it start receiving events when the container gets focus
 ```javascript
 let editContainer = document.querySelector("#editContainer");
@@ -48,7 +50,7 @@ editContainer.addEventListener("keyup", e => {
 });
 
 editContext.addEventListener("textupdate", (e => {
-    model.updateText(e.text, e.updateRange);
+    model.updateText(e.newText, e.updateRange);
 
     // Do not call textChanged on editContext, as we're accepting
     // the incoming input.
@@ -82,15 +84,17 @@ After creating an EditContext object, the web application should initialize the 
 The typical flow of text input comes from the user pressing keys on the keyboard. These are delivered to the browser, which opted-in to using the system's text services framework in order to integrate with the IMEs installed on the system. This will cause input to be forwarded to the active IME. The IME is then able to query the text services to read contextual information related to the underlying editable text in order to provide suggestions, and potentially modify which character(s) should be written to the shared buffer. These modifications are typically performed based on the current selection, which is also communicated through the text services framework. When the shared buffer is updated, the web application will be notified of this via the ```textupdate``` event.
 
 When an EditContext has focus, this sequence of events is fired when a key is pressed and an IME is not active
+
 |  Event        | EventTarget        |
-| ------------- | -----------------  |
+| ------------- | ------------------ |
 |  keydown      | focused element    |
 |  textupdate   | active EditContext |
 |  keyup        | focused element    |
 
 Note that keypress is not delivered, as the active EditContext instead receives the textupdate event.
 
-Now consider the scenario where an IME is active, the user types in two characters, then commits to the first IME candidate by hittin 'Space'. 
+Now consider the scenario where an IME is active, the user types in two characters, then commits to the first IME candidate by hitting 'Space'.
+
 |  Event                | EventTarget        |  Key being pressed
 | -------------         | -----------------  | -------------------
 |  keydown              | focused element    |  Key 1
