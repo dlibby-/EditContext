@@ -10,7 +10,54 @@ The EditContext API is an abstraction over a shared text input buffer that is a 
 
 Because the buffer and selection are stateful, updating the contents of the buffer is a cooperative process between the characters coming from the user and changes to the content that are driven by other events. Cooperation takes place through a series of events dispatched on the EditContext to the web application &mdash; these events are requests from the text services framework for updates to the editable text or the web application's view of that text. The web application is also responsible for communicating state changes to the text input services, by using methods on the EditContext.
 
-The text services framework reads the following state:
+The EditContext must be focused in order to receive updates from the systems text services. This does not change or modify the existing focused/active element, but instead instructs the user agent that a given EditContext is active and thus text editing related updates should be delivered via events on the EditContext.
+
+Creating an EditContext and have it start receiving events when the container gets focus
+```javascript
+let editContainer = document.querySelector("#editContainer");
+let editContext = new EditContext({type: "text"});
+editContainer.addEventListener("focus", () => editContext.focus());
+```
+
+Assuming ```model``` represents the document model for the editable content, and ```view``` represents and object that produces an HTML view of the document.
+Register for textupdate and keyboard related events (note that keydown/keyup are still delivered to the edit container that still has focus):
+```javascript
+editContainer.addEventListener("keydown", e => {
+    // Handle control keys that don't result in characters being inserted
+    switch (e.key) {
+        case "Home":
+            model.updateSelection(...);
+            view.queueUpdate();
+            break;
+        case "Backspace":
+            model.deleteCharacters(Direction.BACK);
+            view.queueUpdate();
+            break;
+        case "Control":
+        ...
+    }
+});
+
+editContainer.addEventListener("keyup", e => {
+    // Manage key modifier states
+    switch (e.key) {
+        case "Control":
+        case "Shift":
+        ...
+    }
+});
+
+editContext.addEventListener("textupdate", (e => {
+    model.updateText(e.text, e.updateRange);
+
+    // Do not call textChanged on editContext, as we're accepting
+    // the incoming input.
+
+    view.queueUpdate();
+});
+```
+
+While an EditContext is active, the text services framework reads the following state:
 * contents
 * selection location
 * location on the screen
@@ -34,6 +81,34 @@ After creating an EditContext object, the web application should initialize the 
 
 The typical flow of text input comes from the user pressing keys on the keyboard. These are delivered to the browser, which opted-in to using the system's text services framework in order to integrate with the IMEs installed on the system. This will cause input to be forwarded to the active IME. The IME is then able to query the text services to read contextual information related to the underlying editable text in order to provide suggestions, and potentially modify which character(s) should be written to the shared buffer. These modifications are typically performed based on the current selection, which is also communicated through the text services framework. When the shared buffer is updated, the web application will be notified of this via the ```textupdate``` event.
 
+When an EditContext has focus, this sequence of events is fired when a key is pressed and an IME is not active
+|  Event        | EventTarget        |
+| ------------- | -----------------  |
+|  keydown      | focused element    |
+|  textupdate   | active EditContext |
+|  keyup        | focused element    |
+
+Note that keypress is not delivered, as the active EditContext instead receives the textupdate event.
+
+Now consider the scenario where an IME is active, the user types in two characters, then commits to the first IME candidate by hittin 'Space'. 
+|  Event                | EventTarget        |  Key being pressed
+| -------------         | -----------------  | -------------------
+|  keydown              | focused element    |  Key 1
+|  compositionstart     | active EditContext |
+|  textupdate           | active EditContext |
+|  keyup                | focused element    |
+|  keydown              | focused element    |  Key 2
+|  textupdate           | active EditContext |
+|  keyup                | focused element    |
+|  keydown              | focused element    |  Space
+|  textupdate           | active EditContext |  (committed IME characters available in event.updateText)
+|  keyup                | focused element    |
+|  compositioncomplete  | active EditContext |
+
+Note that the composition events are also not fired on the focused element as the composition is operating on the shared buffer that is represented by the EditContext.
+
+
+
 Changes to the editable contents can also come from external events, such as collaboration scenarios. In this case, the web editing framework may get some XHR completion that notifies it of some pending collaboartive change that another user has committed. The framework is then responsible for writing to the shared buffer, via the ```textChanged()``` method.
 
 ![external input](external_input.png)
@@ -45,7 +120,7 @@ The ```textupdate``` event will be fired on the EditContext when user input has 
 Updates to the shared buffer that are not initiated via text services raising a ```textupdate``` event are performed by calling the ```textChanged()``` method on the EditContext. ```textChanged()``` accepts a range (start and end offsets over the underlying buffer) and the characters to insert at that range. ```textChanged()``` should be called anytime the editable contents have been updated. However, in general this should be avoided during the firing of ```textupdate``` as it will result in a canceled composition.
 
 The ```selectionupdate``` event may be fired when the IME wants a specific region selected, generally in response to an operation like IME reconversion.
-```selectionChanged()``` should be called whenever the selection has changed. This could be from a combination of control keys (e.g. Shift + Arrow) or mouse selection.
+```selectionChanged()``` takes a start and end offset that are communicated whenever the selection has changed. This could be from a combination of control keys (e.g. Shift + Arrow) or mouse selection. ```selectionChange()``` 
 
 The ```layoutChanged()``` method must be called whenever the client coordinates of the view of the EditContext have changed. The arguments to this method describe a bounding box for both the editable region and also the current selection. 
 
@@ -59,50 +134,6 @@ The ```type``` property on the EditContext (also can be passed in a dictionary t
 
 ## Example usage
 
-
-Creating an EditContext and have it be focused
-```javascript
-let editContext = new EditContext({type: "text"});
-editContext.focus();
-```
-
-Assuming ```model``` represents the document model for the editable content, and ```view``` represents and object that produces an HTML view of the document.
-Register for textupdate and keyboard related events:
-```javascript
-editContext.addEventListener("keydown", e => {
-    // Handle control keys that don't result in characters being inserted
-    switch (e.key) {
-        case "Home":
-            model.updateSelection(...);
-            view.queueUpdate();
-            break;
-        case "Backspace":
-            model.deleteCharacters("back");
-            view.queueUpdate();
-            break;
-        case "Control":
-        ...
-    }
-});
-
-editContext.addEventListener("keyup", e => {
-    // Manage key modifier states
-    switch (e.key) {
-        case "Control":
-        case "Shift":
-        ...
-    }
-});
-
-editContext.addEventListener("textupdate", (e => {
-    model.updateText(e.text, e.updateRange);
-
-    // Do not call textChanged on editContext, as we're accepting
-    // the incoming input.
-
-    view.queueUpdate();
-});
-```
 
 Example of a user-defined EditModel class that contains the underlying model for the editable content
 ```javascript
@@ -132,7 +163,9 @@ class EditModel {
     deleteCharacters(direction) {
         if (this.editContext.currentSelection.start === this.editContext.currentSelection.end) {
             // adjust start/end based on direction and whether we're at the beginning or end
+            editContext.selectionChanged(
         } else {
+            // removes characters within selection
             this.editContext.textChanged(this.selection.start, this.selection.end, "");
         }
     }
@@ -193,7 +226,7 @@ The layout position of the EditContext is also reported to the input thread comp
 
 ## Open Issues
 
-How to deal with the object model for focus, which is currently expressed via an Element (e.g. document.activeElement). Additionally how do we define tab ordering? Could we associate the EditContext with an element and have it 'forward' events? 
+How to deal EditContext focus when the focused element itself is editable? In the current proposed model, the focused element doesn't receive things like composition events &mdash; should an editable element receive these? Does text actually get inserted? Can we avoid this corner case by not allowing an EditContext to get focus() when the activeElement is editable?
 
 How does EditContext integrate with accessibility [Accessibility Object Model?](http://wicg.github.io/aom/explainer.html) so that screen readers also have context as to where the caret/selection is placed as well as the surrounding contents.
 
