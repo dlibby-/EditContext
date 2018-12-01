@@ -30,16 +30,22 @@ The web application is free to communicate before, after or during a request fro
 
 ### Code example
 
-Creating an EditContext and have it start receiving events when its associated container gets focus
+Creating an EditContext and have it start receiving events when its associated container gets focus. After creating an EditContext object, the web application should initialize the text and selection (unless the default of empty is desired) along with the layout bounds of the EditContext's representation in the HTML view by calling ```textChanged()```, ```selectionChanged()```, and ```layoutChanged()```, respectively.
+
 ```javascript
 let editContainer = document.querySelector("#editContainer");
-let editContext = new EditContext({type: "text"});
+let editContext = new EditContext({
+    type: "text",
+    initialText: ""
+});
 editContainer.addEventListener("focus", () => editContext.focus());
+window.requestAnimationFrame(() => {
+    editContext.layoutChanged(editContainer.getBoundingClientRect(), computeCaretBoundingRect());
+});
 ```
 
-After creating an EditContext object, the web application should initialize the text and selection (unless the default of empty is desired) along with the layout bounds of the EditContext's representation in the HTML view by calling ```textChanged()```, ```selectionChanged()```, and ```layoutChanged()```, respectively.
 
-Assuming ```model``` represents the document model for the editable content, and ```view``` represents and object that produces an HTML view of the document (see [Code Appendix](#code-appendix) for more details).
+Assuming ```model``` represents the document model for the editable content, and ```view``` represents and object that produces an HTML view of the document (see [Code Appendix](#code-appendix) for more details on example implementations).
 Register for textupdate and keyboard related events (note that keydown/keyup are still delivered to the edit container that still has focus):
 ```javascript
 editContainer.addEventListener("keydown", e => {
