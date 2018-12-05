@@ -6,7 +6,7 @@ The EditContext API provides a way for web developers to create editing experien
 
 ## Details
 
-The EditContext API is an abstraction over a shared text input buffer that is a plain text model of the content being edited. Creating an edit context conceptually tells the user agent to intantiate the appropriate machinery to create a context that will be the target of text input operations, without creating an contenteditable portion of the DOM tree. The EditContext also has the notion of selection, expressed as offsets into the buffer (collapsed selection represents an insertion point or caret). The EditContext keeps state to describe the layout bounds of the view of the editable region, as well as the bounds of the selection. These values are provided by the web developer, and communicated by the user agent to the underlying platform so that touch keyboards and IME's can be appropriately positioned.
+The EditContext API is an abstraction over a shared text input buffer that is a plain text model of the content being edited. Creating an edit context conceptually tells the user agent to instantiate the appropriate machinery to create a target for text input operations, without creating an contenteditable portion of the DOM tree. The EditContext also has the notion of selection, expressed as offsets into the buffer (collapsed selection represents an insertion point or caret). The EditContext keeps state to describe the layout bounds of the view of the editable region, as well as the bounds of the selection. These values are provided by the web developer, and communicated by the user agent to the underlying platform so that touch keyboards and IME's can be appropriately positioned.
 
 Having a shared buffer and selection allows for software keyboards to have context regarding the contents being edited. This enables features such as autocorrection suggestions, composition reconversion, and simplified handling of composition candidate selection. Because the buffer and selection are stateful, updating the contents of the buffer is a cooperative process between the characters coming from user input and changes to the content that are driven by other events. Cooperation takes place through a series of events dispatched on the EditContext to the web application &mdash; these events are requests from the text services framework for updates to the editable text or the web application's view of that text. The web application is also responsible for communicating state changes to the text input services, by using methods on the EditContext.
 
@@ -199,10 +199,13 @@ class EditModel {
     deleteCharacters(direction) {
         if (this.editContext.currentSelection.start === this.editContext.currentSelection.end) {
             // adjust start/end based on direction and whether we're at the beginning or end
-            editContext.selectionChanged(
+            this.editContext.selectionChanged(...);
         } else {
             // removes characters within selection
-            this.editContext.textChanged(this.selection.start, this.selection.end, "");
+            let selectionStart = this.editContext.currentSelection.start;
+            this.editContext.textChanged(selectionStart,
+                this.editContext.currentSelection.end, "");
+            this.editContext.selectionChanged(selectionStart, selectionStart);
         }
     }
 }
