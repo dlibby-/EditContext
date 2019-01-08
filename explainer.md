@@ -4,6 +4,82 @@
 
 The EditContext API provides a way for web developers to create editing experiences that are integrated with the underlying platform's input modalities (e.g. touch keyboard, IME, shapewriting, etc.) without having to deal with the downsides of contenteditable regions. While contenteditable provides certain desirable functionality, such as caret and IME placement, it is fundamentally a WYSIWYG editor for *HTML* content. When contenteditable regions are used for editing, in order to compute the underlying document model (which is not always HTML) the HTML DOM structure within the contenteditable region must be read and interpreted, in order to derive the desired representation document being edited. On the other hand, setting up keyboard and composition event handlers on any non-editable Element doesn't provide a fully integrated editing experience.
 
+## Motivation
+
+Interoperability in Content Editable (CE from here on) has been the culprit in the world of JavaScript powered editors and one of the main contributors to bugs, performance and redundant code being written. There were numerous articles have been written on the web on this issue. Here are couple of links if you like to get the details.
+* [ContentEditable — The Good, the Bad and the Ugl](https://medium.com/content-uneditable/contenteditable-the-good-the-bad-and-the-ugly-261a38555e9c)
+* [ Fixing ContentEditable](https://medium.com/content-uneditable/fixing-contenteditable-1a9a5073c35d)
+
+Current problems come from the legacy designs that were implemented to accomodate much of editing on the web almsot two decades ago. The main theme in implementations is the tight coupling between user input and DOM and Layout operations. In addition, the complicated input machinery doesn’t explain what is about to be inserted into markup and how. This approach works for as long as it is a simple input that doesn't need to be modified in any way by a developer which is obviously not the case today.
+
+As it currently stands, editing frameworks do not agree with existing machinery of UA generated content and the amount of DOM mutations that happen during user input. They want to understand the intention of the user and they want to be able to override or prevnet all together browser's default behavior.
+
+ Developers have to deal with side effects of UA generated content in the most basic of editing operations such as formatting commands or special keys such as ENTER, DELETE and BACKSPACE.
+
+ Consider an example that was called out in one of the discussions is the generation of by CKEditor folks where the expectation is UA should generate, ```<strong></strong>``` instead of ```<b></b>``` when CTRL+B is pressed or its equivalent. Whether one agrees with this notion or not, it is fair to provide the developer with a way to implement their own vision. For illustration purposes, take a look at snippet below to see how this could be implemented.
+```html
+<html>
+<body>
+    <div id="editableContainer" contenteditable="true"><br/></div>
+    <input type="button" onclick="boldSelectedText();" value="Bold" />
+    <script>
+        let MutationObserver = window.MutationObserver;
+        let targetNode = document.getElementById('editableContainer');
+        let config = { childList: true };
+        let observer = new MutationObserver(function (mutationsList) {
+            for (let mutation of mutationsList) {
+                if (mutation.type === 'childList') {
+                    if (mutation.addedNodes.length > 0) {
+                        for (let i = 0; i < mutation.addedNodes.length; i++) {
+                            if (mutation.addedNodes[i].tagName === 'B') {
+                                let newNode = document.createElement("strong");
+                                newNode.innerText = mutation.addedNodes[i].outerText;
+                                targetNode.removeChild(mutation.addedNodes[i]);
+                                targetNode.appendChild(newNode);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        observer.observe(targetNode, config);
+        function boldSelectedText() {
+            document.execCommand("bold");
+        }
+    </script>
+</body>
+</html>
+```
+
+Another example is disagreement on what UA should actuallu generate on ENTER, or delete commands. In case of ENTER, a developer ends up having this after placing caret after "a":
+```html
+<div contenteditbale="true">
+a
+    <div>
+        <br/>
+    </div>
+</div>
+```
+This may not suite their needs as so to change the markup they would have to either implement Mutation Observers, or have special keys such as ENTER implemented in JavaScript and also maintain their own DOM that has to be synchronized with the real one to just get the folloing markup.
+```html
+<div contenteditbale="true">
+a
+    <p>
+    </p>
+</div>
+```
+As one can see, this is very inefficient and brings a number of issues with it but these are the types of things one must do today to achieve the result. Each solution, be it Mutation observer way or a implement everything on your own, each brings its own set of unique challenges.
+
+Another set of issues that deservers its own section is motivation is IMEs.
+
+There is a great desire from editing frameworks to be able to handle IME input. Today,this is not possible without first waiting for IME compisition to complete then going and undoing SOM changes done by the UA. In other cases, such as controlling candidate window, it is not possible at all.
+
+Rich-text editors want to control the generation of the content end-to-end. Moreover, splitting the view and data model seems to be the common approach in designing the editor in JavaScript.
+
+
+There are basically a few things that every editor developer wants to do. Control the selection, undo manager, clipboard operations, navigation keys, and regulat typing. Today, this is done after the DOM mutations which as it was mentioned before, can be in the hundreds. The problem only gets worse when developers are forced to write redundant code to account for different behavior in different browsers.
+
+
 ## Details
 
 The EditContext API is an abstraction over a shared text input buffer that is a plain text model of the content being edited. Creating an edit context conceptually tells the user agent to instantiate the appropriate machinery to create a target for text input operations, without creating an contenteditable portion of the DOM tree. The EditContext also has the notion of selection, expressed as offsets into the buffer (collapsed selection represents an insertion point or caret). The EditContext keeps state to describe the layout bounds of the view of the editable region, as well as the bounds of the selection. These values are provided by the web developer, and communicated by the user agent to the underlying platform so that touch keyboards and IME's can be appropriately positioned.
