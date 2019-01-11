@@ -1,7 +1,17 @@
 # EditContext API Explained
+## Intro needs further editing to capture the following
+The state of editing on the web
+  * Editing on the web has evolved from filling in forms
+  * Rich editing experiences are not necessarily editing HTML, HTML is used to construct a view of some app-specific document model
 
-## Overview
+Technology provided by the browser to facilitate building sophisticated editing apps
+  * Basic input elements are suitable for capturing text input, but can't be used to display a rich view of the document, so apps use them in a hidden way which leads to increased complexity, poor accessibility and an overall worse editing experience. 
+  * Contenteditable has a design flaw in that it couples the document model and view such that its only suitable for editing HTML in a WYSYWIG fashion - and as a result doesn't meet the needs of many editing applications.
+  * Without using an editable element, browsers don't enable OS input services so features like composition, handwriting recognition and shape-writing will not be available.
+  * Apps could use an editable element and override all default behaviors by calling preventDefault on key events, but not during composition without entirely disabling composition
+  * Key point: there is no combination of input APIs in the browser today on which to build a great editing experience.
 
+<<<<<<< HEAD
 The EditContext API provides a way for web developers to create editing experiences that are integrated with the underlying platform's input modalities (e.g. touch keyboard, IME, shapewriting, etc.) without having to deal with the downsides of contenteditable regions. While contenteditable provides certain desirable functionality, such as caret and IME placement, it is fundamentally a WYSIWYG editor for *HTML* content. When contenteditable regions are used for editing, in order to compute the underlying document model (which is not always HTML) the HTML DOM structure within the contenteditable region must be read and interpreted, in order to derive the desired representation document being edited. On the other hand, setting up keyboard and composition event handlers on any non-editable Element doesn't provide a fully integrated editing experience.
 
 ## Motivation
@@ -34,6 +44,50 @@ Another approach taken was to introduce “beforeInput” event. While sounding 
 
 As an alternative to the failed beforeInput Google has proposed a roadmap in [Google Chrome Roadmap Proposal](https://docs.google.com/document/d/10qltJUVg1-Rlnbjc6RH8WnngpJptMEj-tyrvIZBPSfY/edit) where it was proposed to use existing browser primitives solving CE problems with textarea buffer approach, similar to what developers have already been doing. While we agree with it in concept, we don't think there is a clean way to solve this with existing primitives. Hence, we are proposing EditContext API.
 
+=======
+Lower-level APIs provided by modern operating systems
+  * To facilitate input using a variety of modalities, iOS, Android, Windows, and others? have developed a stateful intermediary that sits between input clients (e.g. IMEs) and input consumers (i.e. an editing app).
+  * This intermediary facilitates communication using an array-like, plain-text view of its document, and allows various input clients to:
+    * Query for the text of that view, for example, to increase the accuracy of suggestions while typing
+    * Request that regions of the document be highlighted, for example, to facilitate composition
+    * It also can request the location of text in the view, for example, to display input-client specific UI can be displayed in an appropriate location.
+  * Browsers take advantage of these OS input services whenever an editable element is focused by registering for callbacks to handle the requests for location, highlighting and text updating.
+
+Proposed solution
+  * To avoid the issues mentioned previously, we propose exposing the OS input services more directly to the web, allowing the queries and modifications requested by the OS to be handled in JavaScript.
+  * insert stuff about how it works.
+  
+## Motivation
+This document proposes an API that allows web sites to integrate with the input services of the OS, without requiring that an editable element be focused in the DOM.  Without a focused, editable element, a web editing app has no way to enable composition from IMEs and access other advanced input mechanisms like handwriting recognition and shape-writing.
+
+The motivation for such an API is to avoid the pitfalls that editing apps currently experience when using one of two patterns for capturing input that are prevalent on the web today:
+
+1. A contenteditable element that is part of the editing application's view and contains the content to be edited
+1. Using a (mostly) hidden textarea which contains (potentially a subset of) the content to be edited, while displaying a separate view of the document in HTML
+
+The first approach limits the app's ability to enhance the view, as the view (i.e. the DOM) is also the authoritative source on the contents of the document being edited (i.e. the model for the document and the HTML view of that document are the same).
+
+This is a problem for building an app like Visual Studio, which provides a rich view for syntax highlighting and augments methods and classes with commit history and dependency information.  The formatting and extra information shown in the view is not part of the editable document.
+
+![Visual Studio's rich view of a plain-text document](visual_studio_editing_experience.png)
+
+When a browser interprets this data as the editable document and fulfills requests for the OS input methods, the discrepancy can negatively affect the authoring experience.
+
+TODO: insert bad suggestion screen shot when using virtual keyboard
+
+An additional issue with using contenteditable is that the editing operations built-in to the browser are designed to edit HTML, which produces results that are unrelated to the change in the actual editable document.  For example, typing an 'x' after public in the document shown above when using a contenteditable element would continue with the preceding blue color making publicx look like a keyword.  To avoid the issue, authors may prevent the default handling of input (e.g. on keydown), but that can only be done when a composition is not in progress, specifically, there is no way to prevent modification of the DOM during composition without disabling composition.
+
+For these reasons, many editing applications opt for an alternative approach using a hidden textarea to capture input, including composition.  The hidden textarea allows the app to decouple its view of the document from the data the browser will interpret as being editable.  This provides flexibility in the presentation of the document and works around issues with the previous contenteditable approach.
+
+However, for the hidden textarea approach to work, it must be focused and it must contain the browser's native selection.  These constraints come with the following drawbacks:
+
+1. Native selection cannot be used as part of the view (because its being used in the hidden textarea instead), which adds complexity (since the editing app must now build its own representation of selection and the caret), and (unless rebuilt by the editing app) eliminates specialized experiences for touch where selection handles and other affordances can be supplied for a better experience.
+TODO: screenshot of issue
+1. When the location of selection in the textarea doesn't perfectly match the location of selection in the view, it creates problems when software keyboards attempt to reposition the viewport to where the system thinks editing is occurring.
+TODO: screenshot of issue
+1. Accessibility is negatively impacted.  Assistive technologies may highlight the textarea and not the view and read only the subset of the content copied into the textarea and not what is visible to the user.
+TODO: screenshot or video of the issue
+>>>>>>> 5c82a1a4ae524e4ca56f2c718ba3b2903f31df31
 
 ## Details
 
