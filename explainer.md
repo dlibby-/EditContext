@@ -1,4 +1,28 @@
 # EditContext API Explained
+## Intro needs further editing to capture the following
+The state of editing on the web
+  * Editing on the web has evolved from filling in forms
+  * Rich editing experiences are not necessarily editing HTML, HTML is used to construct a view of some app-specific document model
+
+Technology provided by the browser to facilitate building sophisticated editing apps
+  * Basic input elements are suitable for capturing text input, but can't be used to display a rich view of the document, so apps use them in a hidden way which leads to increased complexity, poor accessibility and an overall worse editing experience. 
+  * Contenteditable has a design flaw in that it couples the document model and view such that its only suitable for editing HTML in a WYSYWIG fashion - and as a result doesn't meet the needs of many editing applications.
+  * Without using an editable element, browsers don't enable OS input services so features like composition, handwriting recognition and shape-writing will not be available.
+  * Apps could use an editable element and override all default behaviors by calling preventDefault on key events, but not during composition without entirely disabling composition
+  * Key point: there is no combination of input APIs in the browser today on which to build a great editing experience.
+
+Lower-level APIs provided by modern operating systems
+  * To facilitate input using a variety of modalities, iOS, Android, Windows, and others? have developed a stateful intermediary that sits between input clients (e.g. IMEs) and input consumers (i.e. an editing app).
+  * This intermediary facilitates communication using an array-like, plain-text view of its document, and allows various input clients to:
+    * Query for the text of that view, for example, to increase the accuracy of suggestions while typing
+    * Request that regions of the document be highlighted, for example, to facilitate composition
+    * It also can request the location of text in the view, for example, to display input-client specific UI can be displayed in an appropriate location.
+  * Browsers take advantage of these OS input services whenever an editable element is focused by registering for callbacks to handle the requests for location, highlighting and text updating.
+
+Proposed solution
+  * To avoid the issues mentioned previously, we propose exposing the OS input services more directly to the web, allowing the queries and modifications requested by the OS to be handled in JavaScript.
+  * insert stuff about how it works.
+  
 ## Motivation
 This document proposes an API that allows web sites to integrate with the input services of the OS, without requiring that an editable element be focused in the DOM.  Without a focused, editable element, a web editing app has no way to enable composition from IMEs and access other advanced input mechanisms like handwriting recognition and shape-writing.
 
