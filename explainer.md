@@ -1,8 +1,34 @@
 # EditContext API Explained
+## Motivation
+This document proposes an API that allows web sites to integrate with the input services of the OS, without requiring that an editable element be focused in the DOM.  Without a focused, editable element, a web editing app has no way to enable composition from IMEs and access other advanced input mechanisms like handwriting recognition and shape-writing.
 
-## Overview
+The motivation for such an API is to avoid the pitfalls that editing apps currently experience when using one of two patterns that are prevalent on the web today:
 
-The EditContext API provides a way for web developers to create editing experiences that are integrated with the underlying platform's input modalities (e.g. touch keyboard, IME, shapewriting, etc.) without having to deal with the downsides of contenteditable regions. While contenteditable provides certain desirable functionality, such as caret and IME placement, it is fundamentally a WYSIWYG editor for *HTML* content. When contenteditable regions are used for editing, in order to compute the underlying document model (which is not always HTML) the HTML DOM structure within the contenteditable region must be read and interpreted, in order to derive the correct representation for the editor's document model. On the other hand, setting up keyboard and composition event handlers on any non-editable Element doesn't provide a fully integrated editing experience.
+1. A contenteditable element that is part of the editing application's view and contains the content to be edited
+1. Using a (mostly) hidden textarea which contains (potentially a subset of) the content to be edited, while displaying a separate view of the document in HTML
+
+The first approach limits the app's ability to enhance the view, as the view (DOM) is the authoritative source on the contents of the document being edited (i.e. the model for the document and the HTML view of that document are the same).
+
+This is a problem for building an app like Visual Studio, which provides a rich view for syntax highlighting and augments methods and classes with commit history and dependency information.  The formatting and extra information shown in the view is not part of the editable document.
+
+![Visual Studio's rich view of a plain-text document](visual_studio_editing_experience.png)
+
+When a browser interprets this data as the editable document and fulfills requests for the OS input methods, the discrepancy can negatively affect the authoring experience.
+
+TODO: insert bad suggestion screen shot when using virtual keyboard
+
+An additional issue with using contenteditable is that the editing operations built-in to the browser are designed to edit HTML, which produces results that are unrelated to the change in the actual editable document.  For example, typing an 'x' after public in the document shown above when using a contenteditable element would continue with the preceding blue color making publicx look like a keyword.  To avoid the issue, authors may prevent the default handling of input (e.g. on keydown), but that can only be done when a composition is not in progress, specifically, there is no way to prevent modification of the DOM during composition without disabling composition.
+
+For these reasons, many editing applications opt for an alternative approach using a hidden textarea to capture input, including composition.  A separate HTML view of the document is produced providing flexibility in the presentation of the document that was an issue using the previous contenteditable approach.  
+
+For the hidden textarea approach to work it must be focused and it must contain the browser's native selection.  These constraints come with the following drawbacks:
+
+1. Native selection cannot be used as part of the view, which adds complexity (since the editing app must now build its own representation of selection and the caret), and (unless rebuilt by the editing app) eliminates specialized experiences for touch where selection handles and other affordances can be supplied for a better experience.
+TODO: screenshot of issue
+1. When the location of selection in the textarea doesn't perfectly match the location of selection in the view, it creates problems when software keyboards attempt to reposition the viewport to where the system thinks editing is occurring.
+TODO: screenshot of issue
+1. Accessibility is negatively impacted.  Assistive technologies may highlight the textarea and not the view, read only the subset of the content copied into the textarea and not what is visible to the user.
+TODO: screenshot or video of the issue
 
 ## Details
 
