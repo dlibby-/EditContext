@@ -6,78 +6,33 @@ The EditContext API provides a way for web developers to create editing experien
 
 ## Motivation
 
-Interoperability in Content Editable (CE from here on) has been the culprit in the world of JavaScript powered editors and one of the main contributors to bugs, performance and redundant code being written. There were numerous articles have been written on the web on this issue. Here are couple of links if you like to get the details.
-* [ContentEditable — The Good, the Bad and the Ugl](https://medium.com/content-uneditable/contenteditable-the-good-the-bad-and-the-ugly-261a38555e9c)
+Interoperability in Content Editable (CE from here on) has been the culprit in the world of JavaScript powered editors and one of the main contributors to bugs, performance and redundant code being written. There were numerous articles have been written on the web on this issue. Here are a few links if you like to get the details.
+* [ContentEditable — The Good, the Bad and the Ugly](https://medium.com/content-uneditable/contenteditable-the-good-the-bad-and-the-ugly-261a38555e9c)
 * [ Fixing ContentEditable](https://medium.com/content-uneditable/fixing-contenteditable-1a9a5073c35d)
+* [Why ContentEditable is Terrible](https://medium.engineering/why-contenteditable-is-terrible-122d8a40e480)
 
-Current problems come from the legacy designs that were implemented to accomodate much of editing on the web almsot two decades ago. The main theme in implementations is the tight coupling between user input and DOM and Layout operations. In addition, the complicated input machinery doesn’t explain what is about to be inserted into markup and how. This approach works for as long as it is a simple input that doesn't need to be modified in any way by a developer which is obviously not the case today.
+Current problems come from the legacy designs that were implemented to accomodate much of editing on the web almsot two decades ago. The main theme in implementations is the tight coupling between user input and DOM and Layout operations which stems from a fundamental characteristic of HTML semantics that ties data model and view together. In addition, the complicated input machinery doesn’t explain what is about to be inserted into markup and how. This approach works for as long as it is a simple input that doesn't need to be modified in any way by a developer which is not the case today.
 
-As it currently stands, editing frameworks do not agree with existing machinery of UA generated content and the amount of DOM mutations that happen during user input. They want to understand the intention of the user and they want to be able to override or prevnet all together browser's default behavior.
+As it currently stands, editing frameworks do not agree with existing machinery of UA generated content and the amount of DOM mutations that happen during user input. They want to understand the intention of the user and they want to be able to override or prevent all together browser's default behavior.
 
- Developers have to deal with side effects of UA generated content in the most basic of editing operations such as formatting commands or special keys such as ENTER, DELETE and BACKSPACE.
-
- Consider an example that was called out in one of the discussions is the generation of by CKEditor folks where the expectation is UA should generate, ```<strong></strong>``` instead of ```<b></b>``` when CTRL+B is pressed or its equivalent. Whether one agrees with this notion or not, it is fair to provide the developer with a way to implement their own vision. For illustration purposes, take a look at snippet below to see how this could be implemented.
-```html
-<html>
-<body>
-    <div id="editableContainer" contenteditable="true"><br/></div>
-    <input type="button" onclick="boldSelectedText();" value="Bold" />
-    <script>
-        let MutationObserver = window.MutationObserver;
-        let targetNode = document.getElementById('editableContainer');
-        let config = { childList: true };
-        let observer = new MutationObserver(function (mutationsList) {
-            for (let mutation of mutationsList) {
-                if (mutation.type === 'childList') {
-                    if (mutation.addedNodes.length > 0) {
-                        for (let i = 0; i < mutation.addedNodes.length; i++) {
-                            if (mutation.addedNodes[i].tagName === 'B') {
-                                let newNode = document.createElement("strong");
-                                newNode.innerText = mutation.addedNodes[i].outerText;
-                                targetNode.removeChild(mutation.addedNodes[i]);
-                                targetNode.appendChild(newNode);
-                            }
-                        }
-                    }
-                }
-            }
-        });
-        observer.observe(targetNode, config);
-        function boldSelectedText() {
-            document.execCommand("bold");
-        }
-    </script>
-</body>
-</html>
-```
-
-Another example is disagreement on what UA should actuallu generate on ENTER, or delete commands. In case of ENTER, a developer ends up having this after placing caret after "a":
-```html
-<div contenteditbale="true">
-a
-    <div>
-        <br/>
-    </div>
-</div>
-```
-This may not suite their needs as so to change the markup they would have to either implement Mutation Observers, or have special keys such as ENTER implemented in JavaScript and also maintain their own DOM that has to be synchronized with the real one to just get the folloing markup.
-```html
-<div contenteditbale="true">
-a
-    <p>
-    </p>
-</div>
-```
-As one can see, this is very inefficient and brings a number of issues with it but these are the types of things one must do today to achieve the result. Each solution, be it Mutation observer way or a implement everything on your own, each brings its own set of unique challenges.
+There was a natural evolution from trying to implement editing heuristics in CE and failing to make it work, to slowly moving towards a world where the most sensisble thing to do is to override browser behavior and separate the data  model from the view by introducnig a "hidden" plain-text buffer.
+Among other reasons, the motivations behind it were:
+* User input dirties the layout which forces the script to deal with the aftermath of DOM mutations cased by UA.
+* Performance.
+* Problems with selection.
 
 Another set of issues that deservers its own section is motivation is IMEs.
 
-There is a great desire from editing frameworks to be able to handle IME input. Today,this is not possible without first waiting for IME compisition to complete then going and undoing SOM changes done by the UA. In other cases, such as controlling candidate window, it is not possible at all.
+There is a great desire from editing frameworks to be able to handle IME input. Today, this is not possible without first waiting for IME compisition to complete then going and undoing SOM changes done by the UA. In other cases, such as controlling candidate window, it is not possible at all.
 
 Rich-text editors want to control the generation of the content end-to-end. Moreover, splitting the view and data model seems to be the common approach in designing the editor in JavaScript.
 
+### Existing Proposals:
+Multiple approaches have been discussed during the meetings and through online discussions. The group has [considered](https://w3c.github.io/editing/contentEditable.html) adding new attribute values to contenteditable (events, caret, typing) that in would allow web authors to prevent certain input types or to modify some input before it has made it into the markup. This approach hasn’t gotten much traction since browsers would still be building these behaviors on top of content editable thus, inheriting existing limitations.
+ 
+Another approach taken was to introduce “beforeInput” event. While sounding great in concept, It eventually diverged into two different specs, [Level 1](https://www.w3.org/TR/input-events-1/) (Blink implementation) and [Level 2](https://www.w3.org/TR/input-events-2/) (Webkit implementation). The idea behind this event was to allow developer to preventDefault user input (except for IME cases) and provide information about the type of the input. Due to Android IME constraints, Blink made most of the beforeInput event types non-cancelable except for a few formatting input types. This divergence would only get worse over time and since it only solves a small subset of problems for the web, it can’t be considered as a long-term solution.
 
-There are basically a few things that every editor developer wants to do. Control the selection, undo manager, clipboard operations, navigation keys, and regulat typing. Today, this is done after the DOM mutations which as it was mentioned before, can be in the hundreds. The problem only gets worse when developers are forced to write redundant code to account for different behavior in different browsers.
+As an alternative to the failed beforeInput Google has proposed a roadmap in [Google Chrome Roadmap Proposal](https://docs.google.com/document/d/10qltJUVg1-Rlnbjc6RH8WnngpJptMEj-tyrvIZBPSfY/edit) where it was proposed to use existing browser primitives solving CE problems with textarea buffer approach, similar to what developers have already been doing. While we agree with it in concept, we don't think there is a clean way to solve this with existing primitives. Hence, we are proposing EditContext API.
 
 
 ## Details
