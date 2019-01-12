@@ -1,14 +1,5 @@
 # EditContext API Explained
 ## Intro needs further editing to capture the following
-The state of editing on the web - 
-Building a rich text editor on the web is not an easy undertaking. Browser primitives do not provide adequate support to enable developers write modern rich text editors. Existnig primitives are one of the main contributors to bugs, performance issues and redundant code being written.
-
-There were numerous articles written on the web. Here are a few links if you like to learn more on the subject. 
-* [ContentEditable — The Good, the Bad and the Ugly](https://medium.com/content-uneditable/contenteditable-the-good-the-bad-and-the-ugly-261a38555e9c)
-* [ Fixing ContentEditable](https://medium.com/content-uneditable/fixing-contenteditable-1a9a5073c35d)
-* [Why ContentEditable is Terrible](https://medium.engineering/why-contenteditable-is-terrible-122d8a40e480)
-
-
 Editing on the web has evolved from filling in forms -
 
 Editing on the web has slowly evolved from users needing to fill out forms into web authors wanting to proivde their own view of  what the rich text editor should do. With that came more advanced scenarios that existing CE and other input types could not accomodate.
