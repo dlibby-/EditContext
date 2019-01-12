@@ -1,31 +1,44 @@
 # EditContext API Explained
+## Intro needs further editing to capture the following
+Editing on the web has evolved from filling in forms -
 
-## Overview
+Editing on the web has slowly evolved from users needing to fill out forms into web authors wanting to proivde their own view of  what the rich text editor should do. With that came more advanced scenarios that existing CE and other input types could not accomodate.
 
-The EditContext API provides a way for web developers to create editing experiences that are integrated with the underlying platform's input modalities (e.g. touch keyboard, IME, shapewriting, etc.) without having to deal with the downsides of contenteditable regions. While contenteditable provides certain desirable functionality, such as caret and IME placement, it is fundamentally a WYSIWYG editor for *HTML* content. When contenteditable regions are used for editing, in order to compute the underlying document model (which is not always HTML) the HTML DOM structure within the contenteditable region must be read and interpreted, in order to derive the desired representation document being edited. On the other hand, setting up keyboard and composition event handlers on any non-editable Element doesn't provide a fully integrated editing experience.
+As it currently stands, editing frameworks do not agree with existing machinery of UA generated content and the amount of DOM mutations that happen during user input. They want to understand the intention of the user early in the input stack and they want to be able to override or prevent all together browser's default behavior
 
-## Motivation
+Rich editing experiences are not necessarily editing HTML, HTML is used to construct a view of some app-specific document model -
 
-Interoperability in Content Editable (CE from here on) has been the culprit in the world of JavaScript powered editors and one of the main contributors to bugs, performance and redundant code being written. There were numerous articles have been written on the web on this issue. Here are a few links if you like to get the details.
-* [ContentEditable — The Good, the Bad and the Ugly](https://medium.com/content-uneditable/contenteditable-the-good-the-bad-and-the-ugly-261a38555e9c)
-* [ Fixing ContentEditable](https://medium.com/content-uneditable/fixing-contenteditable-1a9a5073c35d)
-* [Why ContentEditable is Terrible](https://medium.engineering/why-contenteditable-is-terrible-122d8a40e480)
+The problems come from the legacy design that were implemented to accomodate much of editing on the web almsot two decades ago. The root of the problem is the  tight coupling between user input and DOM and Layout operations which stems from a fundamental characteristic of HTML semantics that ties data model and view together. In addition, the complicated input machinery doesn’t explain what is about to be inserted into markup and how. These constraints bound developers to rewrite major parts of browser behavior at a high cost. In addition, it ties the developers to use HTML as their document model which may not be what they want.
 
-Current problems come from the legacy designs that were implemented to accomodate much of editing on the web almsot two decades ago. The main theme in implementations is the tight coupling between user input and DOM and Layout operations which stems from a fundamental characteristic of HTML semantics that ties data model and view together. In addition, the complicated input machinery doesn’t explain what is about to be inserted into markup and how. This approach works for as long as it is a simple input that doesn't need to be modified in any way by a developer which is not the case today.
+The two most prevelant appoaches on the web in building a rich text editors are using of
+1. A contenteditable element that is part of the editing application's view and contains the content to be edited
+1. Using a (mostly) hidden textarea which contains (potentially a subset of) the content to be edited, while displaying a separate view of the document in HTML
 
-As it currently stands, editing frameworks do not agree with existing machinery of UA generated content and the amount of DOM mutations that happen during user input. They want to understand the intention of the user and they want to be able to override or prevent all together browser's default behavior.
+The first approach limits the 
+app's ability to enhance the view, as the view (i.e. the DOM) is also the authoritative source on the contents of the document being edited (i.e. the model for the document and the HTML view of that document are the same).
 
-There was a natural evolution from trying to implement editing heuristics in CE and failing to make it work, to slowly moving towards a world where the most sensisble thing to do is to override browser behavior and separate the data  model from the view by introducnig a "hidden" plain-text buffer.
-Among other reasons, the motivations behind it were:
-* User input dirties the layout which forces the script to deal with the aftermath of DOM mutations cased by UA.
-* Performance.
-* Problems with selection.
+This is a problem for building an app like Visual Studio, which provides a rich view for syntax highlighting and augments methods and classes with commit history and dependency information.  The formatting and extra information shown in the view is not part of the editable document. This may cause for the caret to be placed in places it should not go.
 
-Another set of issues that deservers its own section is motivation is IMEs.
+![Visual Studio's rich view of a plain-text document](visual_studio_editing_experience.png)
 
-There is a great desire from editing frameworks to be able to handle IME input. Today, this is not possible without first waiting for IME compisition to complete then going and undoing SOM changes done by the UA. In other cases, such as controlling candidate window, it is not possible at all.
+When a browser interprets this data as the editable document and fulfills requests for the OS input methods, the discrepancy can negatively affect the authoring experience.
 
-Rich-text editors want to control the generation of the content end-to-end. Moreover, splitting the view and data model seems to be the common approach in designing the editor in JavaScript.
+TODO: insert bad suggestion screen shot when using virtual keyboard
+
+An additional issue with using contenteditable is that the editing operations built-in to the browser are designed to edit HTML, which produces results that are unrelated to the change in the actual editable document.  For example, typing an 'x' after public in the document shown above when using a contenteditable element would continue with the preceding blue color making "publicx" look like a keyword.  To avoid the issue, authors may prevent the default handling of input (e.g. on keydown). This can be done but only for regular keyboard input and when a composition is not in progress, specifically, there is no way to prevent modification of the DOM during composition without disabling composition.
+
+For these reasons, many editing applications opt-in for an alternative approach using a hidden textarea to capture input, including composition. The hidden textarea allows the app to decouple its view of the document from the data the browser will interpret as being editable. This provides flexibility in the presentation of the document and works around issues with the previous contenteditable approach.
+
+However, for the hidden textarea approach to work, it must be focused and it must contain the browser's native selection. These constraints come with the following drawbacks:
+
+1. Native selection cannot be used as part of the view (because its being used in the hidden textarea instead), which adds complexity (since the editing app must now build its own representation of selection and the caret), and (unless rebuilt by the editing app) eliminates specialized experiences for touch where selection handles and other affordances can be supplied for a better experience. Here are two examples of missing selection grippers functionality.
+![Missing Grippers in Visual Studio Online](NOGrippersGif.gif)
+todo: add the gif sith grippers in it
+1. When the location of selection in the textarea doesn't perfectly match the location of selection in the view, it creates problems when software keyboards attempt to reposition the viewport to where the system thinks editing is occurring.
+TODO: screenshot of issue
+1. Accessibility is negatively impacted. Assistive technologies may highlight the textarea and not the view and read only the subset of the content copied into the textarea and not what is visible to the user.
+Here, although you would not be able to hear, when in Scan mode, Narrator is reading the text in the hidden text area which is the comments above the caret, even though, visually, the caret is drawn in a different location.
+![Narrator discrepancy in Visual Studio Online](AccEx.png)
 
 ### Existing Proposals:
 Multiple approaches have been discussed during the meetings and through online discussions. The group has [considered](https://w3c.github.io/editing/contentEditable.html) adding new attribute values to contenteditable (events, caret, typing) that in would allow web authors to prevent certain input types or to modify some input before it has made it into the markup. This approach hasn’t gotten much traction since browsers would still be building these behaviors on top of content editable thus, inheriting existing limitations.
@@ -33,6 +46,16 @@ Multiple approaches have been discussed during the meetings and through online d
 Another approach taken was to introduce “beforeInput” event. While sounding great in concept, It eventually diverged into two different specs, [Level 1](https://www.w3.org/TR/input-events-1/) (Blink implementation) and [Level 2](https://www.w3.org/TR/input-events-2/) (Webkit implementation). The idea behind this event was to allow developer to preventDefault user input (except for IME cases) and provide information about the type of the input. Due to Android IME constraints, Blink made most of the beforeInput event types non-cancelable except for a few formatting input types. This divergence would only get worse over time and since it only solves a small subset of problems for the web, it can’t be considered as a long-term solution.
 
 As an alternative to the failed beforeInput Google has proposed a roadmap in [Google Chrome Roadmap Proposal](https://docs.google.com/document/d/10qltJUVg1-Rlnbjc6RH8WnngpJptMEj-tyrvIZBPSfY/edit) where it was proposed to use existing browser primitives solving CE problems with textarea buffer approach, similar to what developers have already been doing. While we agree with it in concept, we don't think there is a clean way to solve this with existing primitives. Hence, we are proposing EditContext API.
+
+These API's are inspired by Lower-level APIs provided by modern operating systems
+  * To facilitate input using a variety of modalities, iOS, Android, Windows, and others? have developed a stateful intermediary that sits between input clients (e.g. IMEs) and input consumers (i.e. an editing app).
+  * This intermediary facilitates communication using an array-like, plain-text view of its document, and allows various input clients to:
+    * Query for the text of that view, for example, to increase the accuracy of suggestions while typing
+    * Request that regions of the document be highlighted, for example, to facilitate composition
+    * It also can request the location of text in the view, for example, to display input-client specific UI can be displayed in an appropriate location.
+  * Browsers take advantage of these OS input services whenever an editable element is focused by registering for callbacks to handle the requests for location, highlighting and text updating.
+
+This document proposes similar in concept EditContext API that provides a way for web developers to create editing experiences that are integrated with the underlying platform's input modalities (e.g. touch keyboard, IME, shapewriting, etc.) without having to deal with the downsides of contenteditable regions. While contenteditable provides certain desirable functionality, such as caret and IME placement, it is fundamentally a WYSIWYG editor for *HTML* content. When contenteditable regions are used for editing, in order to compute the underlying document model (which is not always HTML) the HTML DOM structure within the contenteditable region must be read and interpreted, in order to derive the desired representation document being edited. On the other hand, setting up keyboard and composition event handlers on any non-editable Element doesn't provide a fully integrated editing experience.
 
 
 ## Details
