@@ -33,6 +33,7 @@ However, for the hidden textarea approach to work, it must be focused and it mus
 
 1. Native selection cannot be used as part of the view (because its being used in the hidden textarea instead), which adds complexity (since the editing app must now build its own representation of selection and the caret), and (unless rebuilt by the editing app) eliminates specialized experiences for touch where selection handles and other affordances can be supplied for a better experience. Here are two examples of missing selection grippers functionality.
 ![Missing Grippers in Visual Studio Online](NOGrippersGif.gif)
+![With Grippers in Visual Studio Online](withGrippers.gif)
 todo: add the gif sith grippers in it
 1. When the location of selection in the textarea doesn't perfectly match the location of selection in the view, it creates problems when software keyboards attempt to reposition the viewport to where the system thinks editing is occurring.
 TODO: screenshot of issue
