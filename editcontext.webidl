@@ -8,7 +8,7 @@ interface EditContextTextRange {
 interface EditEvent : Event {
 };
 
-interface TextUpdate : EditEvent {
+interface TextUpdateEvent : EditEvent {
     readonly attribute EditContextTextRange updateRange;
     readonly attribute USVString updateText;
     readonly attribute EditContextTextRange newSelection;
@@ -22,9 +22,8 @@ interface TextFormatUpdateEvent : EditEvent {
     readonly attribute EditContextTextRange formatRange;
     readonly attribute USVString color;
     readonly attribute USVString backgroundColor;
-    readonly attribute USVString underlineColor;
-    readonly attribute USVString underlineType;
-    readonly attribute USVString reason;
+    readonly attribute USVString textDecorationColor;
+    readonly attribute USVString textUnderlineStyle;
 };
 
 enum EditContextInputType { "text, "tel", "email" };
