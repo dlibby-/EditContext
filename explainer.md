@@ -109,7 +109,7 @@ When an EditContext has focus, this sequence of events is fired when a key is pr
 |  textupdate   | active EditContext |
 |  keyup        | focused element    |
 
-Because the web page has opted in to the EditContext having focus, keypress is not delivered, as it is redundant with the textupdate event for editing scenarios.
+Because the web page has opted in to the EditContext having focus, keypress is not delivered, as it is redundant with the `textupdate` event for editing scenarios.
 
 Now consider the scenario where an IME is active, the user types in two characters, then commits to the first IME candidate by hitting 'Space'.
 
@@ -157,7 +157,7 @@ The ```mode``` property on the EditContext (also can be passed in a dictionary t
 
 ## Implementation notes
 
-In a browser where the document thread is separate from the input thread, there is some synchronization that needs to take place so that the web developer can provide a consistent and reliable editing experience to the user. Because the threads are separate, there must be a copy of the shared buffer to avoid synchronous communication between the two threads. With a single buffer, synchronous commuincation would be necessary to provide synchronous responses to operating system queries about the contents of the document. The copies of the shared buffer are then managed by a component that lives on the input thread, and a component that lives in the web platform component. The copies can then be synchronized by converting updates to asynchronous notifications with ACKs, where the updates are not committed until it has been confirmed as received by the other thread.
+In a browser where the document thread is separate from the input thread, there is some synchronization that needs to take place so that the web developer can provide a consistent and reliable editing experience to the user. Because the threads are separate, there must be a copy of the shared buffer to avoid synchronous communication between the two threads. With a single buffer, synchronous commuincation would be necessary to provide synchronous responses as required by operating system queries about the contents of the document. The copies of the shared buffer are then managed by a component that lives on the input thread, and a component that lives in the web platform component. The copies can then be synchronized by converting updates to asynchronous notifications with ACKs, where the updates are not committed until it has been confirmed as received by the other thread.
 
 As in the previous section the basic flow of input in this model could look like this:
 ![threaded buffer flow](thread_basic.png)
