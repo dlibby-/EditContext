@@ -357,10 +357,11 @@ As an alternative to the failed beforeInput Google has proposed a roadmap in [Go
     * To highlight text to, for example, indicate where composition is occurring
     * Replace arbitrary runs of text to, for example, facilitate composition updates, provide auto-correction, and other services.
     * Change the location of selection or the caret.
-    * Blur to lose focus
+    * Blur to lose focus.
 * Describe themselves to accessibility services in a special way to indicate that they are editable regions of the document.
 * Enable clipboard operations
 * Automatically become a drop target
+* Undo Manager that maintains the stack of user actions.
 
 #### If we build an editor without editable elements, i.e. using the DOM to render the view of the editable document, what are we missing?
 * APIs to manage focus exist and can be applied to elements that are not editable.
@@ -370,6 +371,7 @@ As an alternative to the failed beforeInput Google has proposed a roadmap in [Go
 * To compensate for the loss of caret the editing app must provide its own and may also provide its own selection.
 * APIs exist to register parts of the view as a drop target
 * Clipboard events will still fire on paste even when the area is not editable, but the editing app must take actions on its own.
+* The app must implement its own Undo Manager.
 
 #### Lower-level APIs provided by modern operating systems
 * To facilitate input using a variety of modalities, OSX, iOS, Android, Windows, and others have developed a stateful intermediary that sits between input clients (e.g. IMEs) and input consumers (i.e. an editing app).
