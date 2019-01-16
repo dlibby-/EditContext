@@ -11,48 +11,49 @@ Despite their shortcomings, contenteditable and the good old textarea element ar
 ### Challenges using contenteditable and textarea to facilitate input
 When using a contenteditable element, it is typically a visible part of the editing application's view containing the content to be edited.  This approach limits the app's ability to enhance the view, as the view (i.e. the DOM) is also the authoritative source on the contents of the document being edited.
 
-Below is an image of the Visual Studio editing experience.  This would be difficult to replicate on the web using a contenteditable element as the view obviously contains more information that the plain-text document being edited.  Because input methods query for the text of the document nearby the selection for context, e.g. to provide suggestions, the divergence in document content and presentation can negatively impact the editing experience. 
+Below is an image of the Visual Studio editing experience.  This would be difficult to replicate on the web using a contenteditable element as the view contains more information that the plain-text document being edited. Specifically, the grey text shows commit history and dependency information that is not part of the plain-text C# document being edited. Because input methods query for the text of the document nearby the selection for context, e.g. to provide suggestions, the divergence in document content and presentation can negatively impact the editing experience. 
 
 ![Visual Studio's rich view of a plain-text document](visual_studio_editing_experience.png)
 
-An additional issue with using contenteditable is that the editing operations built-in to the browser are designed to edit HTML, which produces results that are unrelated to the change in the actual editable document.  For example, typing an 'x' after public in the document shown above when using a contenteditable element would continue with the preceding blue color making "publicx" look like a keyword.  To avoid the issue, authors may prevent the default handling of input (e.g. on keydown). This can be done, but only for regular keyboard input and when a composition is not in progress, specifically, **there is no way to prevent modification of the DOM during composition without  disabling composition**.
+An additional issue with using contenteditable is that the editing operations built-in to the browser are designed to edit HTML, which produces results that are unrelated to the change in the actual editable document.  For example, typing an 'x' after public in the document shown above when using a contenteditable element would continue with the preceding blue color making "publicx" look like a keyword. To avoid the issue, authors may prevent the default handling of input (e.g. on keydown). This can be done, but only for regular keyboard input and when a composition is not in progress, specifically, **there is no way to prevent modification of the DOM during composition without  disabling composition**.
 
 For the reasons above, many editing applications opt for an alternative approach using a hidden textarea to capture input. The hidden textarea allows the app to decouple its view of the document from the data the browser will interpret as being editable. This provides flexibility in the presentation of the document and works around issues with the previous contenteditable approach.
 
 However, for the hidden textarea approach to work, it must be focused, and it must contain the browser's native selection. These constraints come with the following drawbacks:
 
 1. Native selection cannot be used as part of the view (because its being used in the hidden textarea instead), which adds complexity (since the editing app must now build its own representation of selection and the caret), and (unless rebuilt by the editing app) eliminates specialized experiences for touch where selection handles and other affordances can be supplied for a better editing experience.
-1. When the location of selection in the textarea doesn't perfectly match the location of selection in the view, it creates problems when software keyboards attempt to reposition the viewport to where the system thinks editing is occurring.  Input method-specic UI meant to be positioned nearby the selection can also be negatively impacted.
-1. Accessibility is negatively impacted. Assistive technologies may highlight the textarea to visually indicate what content the assisted experience applies to.  Given that the textarea is likely hidden and not part of the view, these visual indicators will likely appear in the wrong location.  Beyond highlighting, the model for accessibility should often match the view and not the porition of the document model copied into a text area to enable OS input services.  For assistive technology that reads the text of the document, the wrong content camay be read., or in this case a view of the document model being supplied to the OS input services, so in many ways accessibility suffers accessibility Not only will the visual indicator be in the wrong place, but the content copied into the textarea does and not what is visible to the user.
+1. When the location of selection in the textarea doesn't perfectly match the location of selection in the view, it creates problems when software keyboards attempt to reposition the viewport to where the system thinks editing is occurring.  Input method-specific UI meant to be positioned nearby the selection, for example the UI presenting candidates for phonetically composed text, can also be negatively impacted (in that they will be placed not nearby the composed text in the view).
+1. Accessibility is negatively impacted. Assistive technologies may highlight the textarea to visually indicate what content the assisted experience applies to.  Given that the textarea is likely hidden and not part of the view, these visual indicators will likely appear in the wrong location.  Beyond highlighting, the model for accessibility should often match the view and not the portion of the document copied into a textarea. For assistive technology that reads the text of the document, the wrong content may be read as a result.
 
 ## A New Solution: EditContext
-To avoid the side-effects that come from using editable elements to integrate with input services, we propose using a new object, EditContext, that when created provides a connection to the operation systems input services.
+To avoid the side-effects that come from using editable elements to integrate with input services, we propose using a new object, EditContext, that when created provides a connection to the operating system's input services.
 
-The EditContext is an abstraction over a shared text input buffer that is a plain text model of the content being edited. Creating an edit context conceptually tells the user agent to instantiate the appropriate machinery to create a target for text input operations, without creating an contenteditable portion of the DOM tree. The EditContext also has the notion of selection, expressed as offsets into the buffer (collapsed selection represents an insertion point or caret). The EditContext keeps state to describe the layout bounds of the view of the editable region, as well as the bounds of the selection. These values are provided by the web developer, and communicated by the user agent to the underlying platform so that touch keyboards and IME's can be appropriately positioned.
+The EditContext is an abstraction over a shared, plain-text input buffer that provides the underlying platform with a view of the content being edited. Creating an EditContext conceptually tells the browser to instantiate the appropriate machinery to create a target for text input operations. In addition to maintaining a shared buffer, the EditContext also has the notion of selection, expressed as offsets into the buffer, state to describe layout of bounds of the view of the editable region, as well as the bounds of the selection. These values are provided in JavaScript to the EditContext and communicated by the browser to the underlying platform to enable rich input experiences.
 
-Having a shared buffer and selection allows for software keyboards to have context regarding the contents being edited. This enables features such as autocorrection suggestions, composition reconversion, and simplified handling of composition candidate selection. Because the buffer and selection are stateful, updating the contents of the buffer is a cooperative process between the characters coming from user input and changes to the content that are driven by other events. Cooperation takes place through a series of events dispatched on the EditContext to the web application &mdash; these events are requests from the text services framework for updates to the editable text or the web application's view of that text. The web application is also responsible for communicating state changes to the text input services, by using methods on the EditContext.
+Having a shared buffer and selection for the underlying platform allows it to provide input methods with context regarding the contents being edited, for example, to enable better suggestions while typing. Because the buffer and selection are stateful, updating the contents of the buffer is a cooperative process between the characters coming from user input and changes to the content that are driven by other events. Cooperation takes place through a series of events dispatched on the EditContext to the web application &mdash; these events are requests from the underlying platform to read or update the text of the web application. The web application can also proactively communicate changes in its text to the underlying platform by using methods on the EditContext.
 
-The EditContext must be focused in order to receive updates from the systems text services. This does not change or modify the existing focused/active element, but instead instructs the user agent that a given EditContext is active and thus text editing related updates should be delivered via events on the EditContext.
+A web application is free to create multiple EditContexts if there are multiple distinct editable areas in the application.  Only the focused EditContext (designated by calling the focus method on the EditContext object) receives updates from the system's input services.  Note that the concept of the EditContext being focused is separate from that of the document's activeElement which will continue to determine the target for dispatching keyboard events.
 
-While an EditContext is active, the text services framework reads the following state:
-* contents
-* selection location
-* location on the screen
+While an EditContext is active, the text services framework may read the following state:
+* Text content
+* Selection offsets into the text content
+* The location (on the screen) of selection
+* The location (on the screen) of the content this EditContext represents
 
 The text services framework can also request that the buffer or view of the application be modified by requesting that:
-* the text of the buffer be updated
-* the selection of the buffer be relocated
-* the text of the buffer be highlighted over a particular range
+* The text contents be updated
+* The selection of be relocated
+* The text contents be marked over a particular range, for example to indicate visually where composition is occurring
 
-The web application is free to communicate before, after or during a request from the text services framework that its:
-* buffer has changed
-* selection has changed
-* layout has changed
-* type of expected input has changed
+The web application is free to communicate before, after or during a request from the underlying platform that its:
+* Text content has changed
+* Selection offsets have changed
+* The location (on the screen) of selection or content has changed
+* The preferred mode of input has changed, for example, to provide software keyboard specialization 
 
-### Code example
+### Example 1
 
-Create an EditContext and have it start receiving events when its associated container gets focus. After creating an EditContext object, the web application should initialize the text and selection (unless the default of empty is desired) via a dictionary passed to the constructor, along with the layout bounds of the EditContext's representation in the HTML view by calling ```layoutChanged()```.
+Create an EditContext and have it start receiving events when its associated container gets focus. After creating an EditContext object, the web application should initialize the text and selection (unless the state of the web application is correctly represented by the empty defaults) via a dictionary passed to the constructor.  Additionally, the layout bounds of selection and conceptual location of the EditContext in the view should be provided by calling ```layoutChanged()```.
 
 ```javascript
 let editContainer = document.querySelector("#editContainer");
@@ -75,7 +76,7 @@ window.requestAnimationFrame(() => {
 editContainer.focus();
 ```
 
-Assuming ```model``` represents the document model for the editable content, and ```view``` represents an object that produces an HTML view of the document (see [Code Appendix](#code-appendix) for more details on example implementations), register for textupdate and keyboard related events (note that keydown/keyup are still delivered to the edit container that still has focus):
+Assuming ```model``` represents the document model for the editable content, and ```view``` represents an object that produces an HTML view of the document (see [Code Appendix](#code-appendix) for more details on example implementations), register for textupdate and keyboard related events (note that keydown/keyup are still delivered to the edit container, i.e. the activeElement):
 
 ```javascript
 editContainer.addEventListener("keydown", e => {
@@ -163,7 +164,7 @@ The ```textupdate``` event will be fired on the EditContext when user input has 
 
 Updates to the shared buffer driven by the webpage/javascript are performed by calling the ```textChanged()``` method on the EditContext. ```textChanged()``` accepts a range (start and end offsets over the underlying buffer) and the characters to insert at that range. ```textChanged()``` should be called anytime the editable contents have been updated. However, in general this should be avoided during the firing of ```textupdate``` as it will result in a canceled composition.
 
-The ```selectionupdate``` event may be fired by the User Agent when the IME wants a specific region selected, generally in response to an operation like IME reconversion.
+The ```selectionupdate``` event may be fired by the browser when the IME wants a specific region selected, generally in response to an operation like IME reconversion.
 
 ```selectionChanged()``` should be called by the web page in order to communicated whenever the selection has changed. It takes as parameters a start and end character offsets, which are based on the underlying flat text buffer held by the EditContext. This would need to be called in the event that a combination of control keys (e.g. Shift + Arrow) or mouse events result in a change to the selection on the edited document.
 
