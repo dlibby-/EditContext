@@ -56,11 +56,16 @@ Create an EditContext and have it start receiving events when its associated con
 
 ```javascript
 let editContainer = document.querySelector("#editContainer");
-let editContext = new EditContext({
-    type: "text",
-    initialText: "Hello world",
-    initialSelection: { start: 11, end: 11 }
-});
+
+let editContextDict = {
+    mode: "text",
+    text: "Hello world",
+    selection: { start: 11, end: 11 }
+};
+let editContext = new EditContext(editContextDict);
+
+let model = new EditModel(editContext, editContextDict.text, editContextDict.selection);
+let view = new EditableView(editContext, model, editContainer);
 
 editContainer.addEventListener("focus", () => editContext.focus());
 window.requestAnimationFrame(() => {
@@ -70,7 +75,7 @@ window.requestAnimationFrame(() => {
 editContainer.focus();
 ```
 
-Assuming ```model``` represents the document model for the editable content, and ```view``` represents and object that produces an HTML view of the document (see [Code Appendix](#code-appendix) for more details on example implementations), register for textupdate and keyboard related events (note that keydown/keyup are still delivered to the edit container that still has focus):
+Assuming ```model``` represents the document model for the editable content, and ```view``` represents an object that produces an HTML view of the document (see [Code Appendix](#code-appendix) for more details on example implementations), register for textupdate and keyboard related events (note that keydown/keyup are still delivered to the edit container that still has focus):
 
 ```javascript
 editContainer.addEventListener("keydown", e => {
@@ -84,27 +89,31 @@ editContainer.addEventListener("keydown", e => {
             model.deleteCharacters(Direction.BACK);
             view.queueUpdate();
             break;
-        case "Control":
         ...
     }
 });
 
-editContainer.addEventListener("keyup", e => {
-    // Manage key modifier states
-    switch (e.key) {
-        case "Control":
-        case "Shift":
-        ...
-    }
-});
-
-editContext.addEventListener("textupdate", (e => {
+editContext.addEventListener("textupdate", e => {
     model.updateText(e.newText, e.updateRange);
 
     // Do not call textChanged on editContext, as we're accepting
     // the incoming input.
 
     view.queueUpdate();
+});
+
+editContext.addEventListener("selectionupdate", e => {
+    model.setSelection(e.start, e.end);
+
+    // Do not call selectionChanged on editContext, as we're accepting
+    // the incoming event.
+
+    // Update the view to render the new selection
+    view.queueUpdate();
+});
+
+editContext.addEventListener("textformatupdate", e => {
+    view.addFormattedRange(e.formatRange)
 });
 ```
 
@@ -122,7 +131,7 @@ When an EditContext has focus, this sequence of events is fired when a key is pr
 |  textupdate   | active EditContext |
 |  keyup        | focused element    |
 
-Note that keypress is not delivered, as the active EditContext instead receives the textupdate event.
+Because the web page has opted in to the EditContext having focus, keypress is not delivered, as it is redundant with the `textupdate` event for editing scenarios.
 
 Now consider the scenario where an IME is active, the user types in two characters, then commits to the first IME candidate by hitting 'Space'.
 
@@ -142,6 +151,8 @@ Now consider the scenario where an IME is active, the user types in two characte
 
 Note that the composition events are also not fired on the focused element as the composition is operating on the shared buffer that is represented by the EditContext.
 
+### Externally triggered changes
+
 Changes to the editable contents can also come from external events, such as collaboration scenarios. In this case, the web editing framework may get some XHR completion that notifies it of some pending collaboartive change that another user has committed. The framework is then responsible for writing to the shared buffer, via the ```textChanged()``` method.
 
 ![external input](external_input.png)
@@ -152,10 +163,11 @@ The ```textupdate``` event will be fired on the EditContext when user input has 
 
 Updates to the shared buffer driven by the webpage/javascript are performed by calling the ```textChanged()``` method on the EditContext. ```textChanged()``` accepts a range (start and end offsets over the underlying buffer) and the characters to insert at that range. ```textChanged()``` should be called anytime the editable contents have been updated. However, in general this should be avoided during the firing of ```textupdate``` as it will result in a canceled composition.
 
-The ```selectionupdate``` event may be fired when the IME wants a specific region selected, generally in response to an operation like IME reconversion.
-```selectionChanged()``` takes a start and end offset that are communicated whenever the selection has changed. This could be from a combination of control keys (e.g. Shift + Arrow) or mouse selection.
+The ```selectionupdate``` event may be fired by the User Agent when the IME wants a specific region selected, generally in response to an operation like IME reconversion.
 
-The ```layoutChanged()``` method must be called whenever the client coordinates of the view of the EditContext have changed. This includes if the viewport is scrolled or the position of the editable contents changes in response to other updates to the view. The arguments to this method describe a bounding box in client coordinates for both the editable region and also the current selection. 
+```selectionChanged()``` should be called by the web page in order to communicated whenever the selection has changed. It takes as parameters a start and end character offsets, which are based on the underlying flat text buffer held by the EditContext. This would need to be called in the event that a combination of control keys (e.g. Shift + Arrow) or mouse events result in a change to the selection on the edited document.
+
+The ```layoutChanged()``` method must be called whenever the [client coordinates](https://drafts.csswg.org/cssom-view/#dom-mouseevent-clientx) (i.e. relative to the origin of the viewport) of the view of the EditContext have changed. This includes if the viewport is scrolled or the position of the editable contents changes in response to other updates to the view. The arguments to this method describe a bounding box in client coordinates for both the editable region and also the current selection. 
 
 The ```textformatupdate``` event is fired when the input method desires a specific region to be styled in a certain fashion, limited to the style properties that correspond with the properties that are exposed on TextFormatUpdateEvent (e.g. backgroundColor, textDecoration, etc.). The consumer of the EditContext should update their view accordingly to provide the user with visual feedback as prescribed by the software keyboard. Note that this may have accessibility implications, as the IME may not be aware of the color scheme of the editable contents (i.e. may be requesting blue highlight on text that was already blue).
 
@@ -163,11 +175,11 @@ The ```textformatupdate``` event is fired when the input method desires a specif
 
 There can be multiple EditContext's per document, and they each have a notion of focused state. Because there is no implicit representation of the EditContext in the HTML view, focus must be managed by the web developer, most likely by forwarding focus calls from the DOM element that contains the editable view. ```focus``` and ```blur``` events are fired on the EditContext in reponse to changes in the focused state. EditContext focus is bound to the element that was focused when the EditContext became active, that is, if the focused element changes, the EditContext will also lose focus.
 
-The ```type``` property on the EditContext (also can be passed in a dictionary to the constructor) denotes what type of input the EditContext is associated with. This information is typically provided to the underlying system as a hint for which software keyboard to load (e.g. keyboard for phone numbers may be a numpad instead of the default keyboard). This defaults to 'text'.
+The ```mode``` property on the EditContext (also can be passed in a dictionary to the constructor) denotes what type of input the EditContext is associated with. This information is typically provided to the underlying system as a hint for which software keyboard to load (e.g. keyboard for phone numbers may be a numpad instead of the default keyboard). This defaults to 'text'.
 
 ## Implementation notes
 
-In a browser where the document thread is separate from the input thread, there is some synchronization that needs to take place so that the web developer can provide a consistent and reliable editing experience to the user. Because the threads are decoupled, there must be another copy of the shared buffer to avoid synchronous communication between the two threads. The copies of the shared buffer are then managed by a component that lives on the input thread, and a component that lives in the web platform component. The copies can then be synchronized by converting updates to asynchronous notifications with ACKs, where the updates are not committed until it has been confirmed as received by the other thread.
+In a browser where the document thread is separate from the input thread, there is some synchronization that needs to take place so that the web developer can provide a consistent and reliable editing experience to the user. Because the threads are separate, there must be a copy of the shared buffer to avoid synchronous communication between the two threads. With a single buffer, synchronous commuincation would be necessary to provide synchronous responses as required by operating system queries about the contents of the document. The copies of the shared buffer are then managed by a component that lives on the input thread, and a component that lives in the web platform component. The copies can then be synchronized by converting updates to asynchronous notifications with ACKs, where the updates are not committed until it has been confirmed as received by the other thread.
 
 As in the previous section the basic flow of input in this model could look like this:
 ![threaded buffer flow](thread_basic.png)
@@ -197,37 +209,47 @@ Example of a user-defined EditModel class that contains the underlying model for
 ```javascript
 // User defined class 
 class EditModel {
-    constructor(editContext) {
+    constructor(editContext, text, selection) {
         // This specific model uses the underlying buffer directly so doesn't
         // store model directly.
         this.editContext = editContext;
+        this.text = text;
+        this.selection = new Selection();
+        this.setSelection(selection.start, selection.end);
     }
 
     updateText(text, updateRange, newSelection) {
-        // No action needed, since we're directly using the shared buffer
-        // as our model
+        this.text = this.text.slice(0, updateRange.start) +
+            text + this.text.slice(updateRange.end, this.text.length);
+    }
+
+    setSelection(start, end) {
+        this.selection.start = start;
+        this.selection.end = end;
     }
 
     updateSelection(...) {
         // Compute new selection, based on shift/ctrl state
         let newSelection = computeSelection(this.editContext.currentSelection, ...);
+        this.setSelection(newSelection.start, newSelection.end);
         this.editContext.selectionChanged(newSelection.start, newSelection.end);
     }
 
-    insertNewline() {
-        this.editContext.textChanged(this.selection.start, this.selection.end, "\\n");
-    }
 
     deleteCharacters(direction) {
-        if (this.editContext.currentSelection.start === this.editContext.currentSelection.end) {
-            // adjust start/end based on direction and whether we're at the beginning or end
-            this.editContext.selectionChanged(...);
+        if (this.selection.start !== this.selection.end) {
+            // Notify EditContext that things are changing.
+            this.editContext.textChanged(this.selection.start, this.selection.end, "");
+            this.editContext.selectionChanged(this.selection.start, this.selection.start);
+
+            // Update internal model state
+            this.text = text.slice(0, this.selection.start) +
+                text.slice(this.selection.end, this.text.length)
+            this.setSelection(this.selection.start, this.selection.start);
         } else {
-            // removes characters within selection
-            let selectionStart = this.editContext.currentSelection.start;
-            this.editContext.textChanged(selectionStart,
-                this.editContext.currentSelection.end, "");
-            this.editContext.selectionChanged(selectionStart, selectionStart);
+            // Delete a single character, based on direction (forward or back).
+            // Notify editContext of changes
+            ...
         }
     }
 }
@@ -236,8 +258,9 @@ class EditModel {
 Example of a user defined class that can compute an HTML view, based on the text model
 ```javascript
 class EditableView {
-    constructor(editContext, editRegionElement) {
+    constructor(editContext, editModel, editRegionElement) {
         this.editContext = editContext;
+        this.editModel = editModel;
         this.editRegionElement = editRegionElement;
 
         // When the webpage scrolls, the layout position of the editable view
@@ -255,9 +278,16 @@ class EditableView {
         }
     }
 
+    addFormattedRange(formatRange) {
+        // Replace any previous formatted range by overwriting - there
+        // should only ever be one (specific to the current composition).
+        this.formattedRange = formatRange;
+        this.queueUpdate();
+    }
+
     renderView() {
-        this.editRegionElement.innerHTML = convertTextToHTML(
-            this.editContext.currentTextBuffer, this.editContext.currentSelection);
+        this.editRegionElement.innerHTML = this.convertTextToHTML(
+            this.editModel.text, this.editModel.selection);
 
         notifyLayoutChanged();
 
@@ -267,13 +297,29 @@ class EditableView {
     notifyLayoutChanged() {
         this.editContext.layoutChanged(this.computeBoundingBox(), this.computeSelectionBoundingBox());
     }
+
+    convertTextToHTML(text, selection) {
+        // compute the view (code omitted for brevity):
+        // - if there is no selection, return a string with the text contents
+        // - surround the selection by a <span> that has the
+        //   appropriate background/foreground colors.
+        // - surround the characters represented by this.formatRange
+        //   with a <span> whose style has properties as specified by
+        //   the properties on 'this.formattedRange': color
+        //   backgroundColor, textDecorationColor, textUnderlineStyle
+    }
 }
 ```
 ## Open Issues
 
 How to deal EditContext focus when the focused element itself is editable? In the current proposed model, the focused element doesn't receive things like composition events &mdash; should an editable element receive these? It feels like we should treat these the same as when the text input operations are redirected and not deliver those events to the editable element.
 
+Is there a reason we might want to fire keypress on the focused element for non-IME input to EditContext. I couldn't think of one and this is generally a synthesized event anyways.
+
 How does EditContext integrate with accessibility [Accessibility Object Model?](http://wicg.github.io/aom/explainer.html) so that screen readers also have context as to where the caret/selection is placed as well as the surrounding contents. This is another major complaint about implementing editors today - without a contenteditable with a full fidelity view, the default accessibility implementations report incorrect information.
+
+Additionally, how can we provide better guidance around accessibility w.r.t. to the `textformatupdate` event.
+
 
 It feels like we may need a mechanism by which ```layoutChanged()``` is more easily integrated. Currently there is no single point that the web developer knows it may need to report updated bounds, and the current model may encourage layout thrashing by computing bounds early in the process of producing a frame. Instead we may need to provide a callback during the rendering steps where the EditContext owner can set the updated layout bounds themselves. Perhaps IntersectionObservers is a good model where we can queue a microtask that will fire after the frame has been committed and layout has been computed &mdash; the layout update may be delayed by a frame, but the update is asynchronous anyways.
 
